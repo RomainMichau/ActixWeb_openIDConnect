@@ -1,0 +1,19 @@
+[package]
+name = "actix_web_openid"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+openidconnect = "3.4.0"
+actix-web = "4"
+serde_json = "1.0.112"
+serde = "1.0.196"
+futures-util = "0.3.17"
+derive_more = "0.99.11"
+anyhow = "1.0.79"
+url = "2.5.0"
+env_logger = "0.9.0"
+log = "0.4.20"
+serde_derive = "1.0.126"
