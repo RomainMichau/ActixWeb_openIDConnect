@@ -1,3 +1,11 @@
+//! Actix Web is a powerful, pragmatic, and extremely fast web framework for Rust.
+//!
+//! # Examples
+//! Lightweight async OpenID Connect (OIDC) client and middleware for Actix-Web.
+//! Support for the Authorization Code Flow
+//! Documentation: https://github.com/RomainMichau/ActixWeb_openIDConnect
+//!
+
 use std::sync::Arc;
 
 use actix_web::dev::ServiceRequest;

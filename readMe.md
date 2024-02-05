@@ -1,8 +1,16 @@
 # Actix-Web openid
 Lightweight async OpenID Connect (OIDC) client and middleware for Actix-Web.  
-Support for the Authorization Code Flow
+Support for the Authorization Code Flow  
+Based on the excellent [openidconnect-rs](https://github.com/ramosbugs/openidconnect-rs) library for rust 
+
 
 # Example
+### Cargo.toml
+```toml
+[dependencies]
+actix-web-openid = "~0.1.1"
+```
+### main.rs
 ```rust  
 use actix_web::{App, get, HttpResponse, HttpServer, Responder};  
 use actix_web::dev::ServiceRequest;  
@@ -31,7 +39,7 @@ async fn main() -> std::io::Result<()> {
                                                         "http://localhost:8080/auth_callback".to_string(),  
                                                         "https://my_keycloak.com/realms/my_realm".to_string(),  
                                                         should_auth,  
-                                                        Some("/is_auth/hello/yo".to_string()),  
+                                                        Some("/is_auth/hello".to_string()),  
                                                         vec!["openid".to_string()]).await;  
     HttpServer::new(move || App::new()  
         .wrap(openid.get_middleware())  // Add the authentication middleware
@@ -70,3 +78,7 @@ Will store access token, refresh token, id_token and user info in cookies
 Open a logout endpoint (/logout). Calling this endpoint will automatically redirect the user to the openID connect logout
 ### Front end
 Make user info contained in the ID token available to the front end through a cookie user_info
+
+# TODO
+- [ ] Add support for refresh token
+- [ ] Add support for PKCE

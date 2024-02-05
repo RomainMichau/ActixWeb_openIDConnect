@@ -139,3 +139,4 @@ impl OpenID {
         logout_request.http_get_url()
     }
 }
+
