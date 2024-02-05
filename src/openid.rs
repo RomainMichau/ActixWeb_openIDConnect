@@ -1,8 +1,8 @@
 use std::fmt::Debug;
 
 use anyhow::Result;
-use openidconnect::{AccessToken, AdditionalProviderMetadata, AuthorizationCode, ClaimsVerificationError, ClientId, ClientSecret, CsrfToken, EmptyAdditionalClaims, EndSessionUrl, IdTokenClaims, IssuerUrl, LogoutRequest, Nonce, OAuth2TokenResponse, PostLogoutRedirectUrl, ProviderMetadata, RedirectUrl, RefreshToken, Scope, TokenResponse};
-use openidconnect::core::{CoreAuthDisplay, CoreAuthenticationFlow, CoreClaimName, CoreClaimType, CoreClient, CoreClientAuthMethod, CoreGenderClaim, CoreGrantType, CoreJsonWebKey, CoreJsonWebKeyType, CoreJsonWebKeyUse, CoreJweContentEncryptionAlgorithm, CoreJweKeyManagementAlgorithm, CoreJwsSigningAlgorithm, CoreResponseMode, CoreResponseType, CoreSubjectIdentifierType, CoreTokenIntrospectionResponse};
+use openidconnect::{AccessToken, AdditionalProviderMetadata, AuthorizationCode, ClaimsVerificationError, ClientId, ClientSecret, CsrfToken, EmptyAdditionalClaims, EndSessionUrl, IdTokenClaims, IssuerUrl, LogoutRequest, Nonce, OAuth2TokenResponse, PostLogoutRedirectUrl, ProviderMetadata, RedirectUrl, RefreshToken, Scope, TokenResponse, UserInfoClaims};
+use openidconnect::core::{CoreAuthDisplay, CoreAuthenticationFlow, CoreClaimName, CoreClaimType, CoreClient, CoreClientAuthMethod, CoreGenderClaim, CoreGrantType, CoreJsonWebKey, CoreJsonWebKeyType, CoreJsonWebKeyUse, CoreJweContentEncryptionAlgorithm, CoreJweKeyManagementAlgorithm, CoreJwsSigningAlgorithm, CoreResponseMode, CoreResponseType, CoreSubjectIdentifierType};
 use openidconnect::reqwest::async_http_client;
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -30,7 +30,6 @@ pub struct AuthorizationUrl {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AdditionalMetadata {
     end_session_endpoint: Option<EndSessionUrl>,
-    introspection_endpoint: String,
 }
 
 
@@ -68,8 +67,7 @@ impl OpenID {
             ClientId::new(client_id.to_string()),
             Some(ClientSecret::new(client_secret.to_string())),
         )
-            .set_redirect_uri(RedirectUrl::new(redirect_uri.to_string())?)
-            .set_introspection_uri(openidconnect::IntrospectionUrl::new(provider_metadata.additional_metadata().introspection_endpoint.clone()).unwrap());
+            .set_redirect_uri(RedirectUrl::new(redirect_uri.to_string())?);
         Ok(
             Self {
                 client,
@@ -109,18 +107,8 @@ impl OpenID {
         })
     }
 
-    pub(crate) async fn introspect(&self, access_token: &AccessToken) -> Result<CoreTokenIntrospectionResponse> {
-        match self.client.introspect(access_token).unwrap()
-            .add_extra_param("grant_type", "code")
-            .request_async(async_http_client).await {
-            Ok(intro) => {
-                Ok(intro)
-            }
-            Err(e) => {
-                log::error!("Error introspecting token: {}", e);
-                Err(anyhow::anyhow!("Error introspecting token: {}", e))
-            }
-        }
+    pub(crate) async fn user_info(&self, access_token: AccessToken) -> Result<UserInfoClaims<EmptyAdditionalClaims, CoreGenderClaim>> {
+        Ok(self.client.user_info(access_token, None)?.request_async(async_http_client).await?)
     }
 
     pub(crate) async fn verify_id_token<'a>(&self, id_token: &'a IdToken, nonce: String) -> Result<&'a IdTokenClaims<EmptyAdditionalClaims, CoreGenderClaim>, ClaimsVerificationError> {
@@ -130,7 +118,7 @@ impl OpenID {
     pub(crate) fn get_logout_uri(&self, id_token: &IdToken) -> Url {
         let mut logout_request = LogoutRequest::from(self.provider_metadata.additional_metadata().end_session_endpoint.clone().unwrap())
             .set_id_token_hint(id_token);
-        match  &self.post_logout_redirect_url {
+        match &self.post_logout_redirect_url {
             None => {}
             Some(uri) => {
                 logout_request = logout_request.set_post_logout_redirect_uri(PostLogoutRedirectUrl::new(uri.to_string()).unwrap());

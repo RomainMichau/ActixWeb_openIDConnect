@@ -11,8 +11,6 @@ use std::sync::Arc;
 use actix_web::dev::ServiceRequest;
 use actix_web::web;
 use actix_web::web::ServiceConfig;
-pub use openidconnect::core::CoreTokenIntrospectionResponse;
-pub use openidconnect::TokenIntrospectionResponse;
 
 use crate::openid::OpenID;
 

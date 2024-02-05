@@ -14,8 +14,8 @@ use actix_web::error::ErrorUnauthorized;
 use actix_web::http::header::LOCATION;
 use actix_web::http::StatusCode;
 use futures_util::future::LocalBoxFuture;
-use openidconnect::{AccessToken, AuthorizationCode, TokenIntrospectionResponse};
-use openidconnect::core::CoreTokenIntrospectionResponse;
+use openidconnect::{AccessToken, AuthorizationCode, EmptyAdditionalClaims, UserInfoClaims};
+use openidconnect::core::CoreGenderClaim;
 use openidconnect::http::HeaderValue;
 use serde::Deserialize;
 
@@ -43,7 +43,7 @@ impl Display for AuthCookies {
 
 #[derive(Clone)]
 pub struct AuthenticatedUser {
-    pub access: CoreTokenIntrospectionResponse,
+    pub access: UserInfoClaims<EmptyAdditionalClaims, CoreGenderClaim>,
 }
 
 #[derive(Debug, derive_more::Error)]
@@ -114,19 +114,20 @@ impl<S, B> Service<ServiceRequest> for OpenIdMiddleware<S>
         };
 
         Box::pin(async move {
-            if !should_auth(&req) && !path2.starts_with("/auth_callback") {
+            if path2.starts_with("/auth_callback") || !should_auth(&req) {
                 return srv.call(req).await;
             }
             match req.cookie(AuthCookies::AccessToken.to_string().as_str()) {
                 None => return Err(redirect_to_auth().into()),
                 Some(token) => {
-                    let introspect = client.introspect(&AccessToken::new(token.value().to_string())).await.unwrap();
-                    if !introspect.active() {
-                        log::debug!("Token not active, redirecting to auth");
-                        return Err(redirect_to_auth().into());
-                    } else {
-                        req.extensions_mut().insert(AuthenticatedUser { access: introspect });
-                    }
+                    let user_info = match client.user_info(AccessToken::new(token.value().to_string())).await {
+                        Ok(user_info) => { user_info }
+                        Err(_) => {
+                            log::debug!("Token not active, redirecting to auth");
+                            return Err(redirect_to_auth().into());
+                        }
+                    };
+                    req.extensions_mut().insert(AuthenticatedUser { access: user_info });
                 }
             }
             srv.call(req).await
