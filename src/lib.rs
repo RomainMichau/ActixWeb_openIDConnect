@@ -14,8 +14,8 @@ use actix_web::web::ServiceConfig;
 
 use crate::openid::OpenID;
 
-pub mod openid_middleware;
 mod openid;
+pub mod openid_middleware;
 
 #[derive(Clone)]
 pub struct ActixWebOpenId {
@@ -24,15 +24,28 @@ pub struct ActixWebOpenId {
 }
 
 impl ActixWebOpenId {
-    pub async fn init(client_id: String, client_secret: String, redirect_url: String, issuer_url: String,
-                      should_auth: fn(&ServiceRequest) -> bool, post_logout_redirect_url: Option<String>, scopes: Vec<String>) -> Self {
+    pub async fn init(
+        client_id: String,
+        client_secret: String,
+        redirect_url: String,
+        issuer_url: String,
+        should_auth: fn(&ServiceRequest) -> bool,
+        post_logout_redirect_url: Option<String>,
+        scopes: Vec<String>,
+    ) -> Self {
         ActixWebOpenId {
-            openid_client: Arc::new(OpenID::init(client_id,
-                                                 client_secret,
-                                                 redirect_url,
-                                                 issuer_url,
-                                                 post_logout_redirect_url,
-                                                 scopes).await.unwrap()),
+            openid_client: Arc::new(
+                OpenID::init(
+                    client_id,
+                    client_secret,
+                    redirect_url,
+                    issuer_url,
+                    post_logout_redirect_url,
+                    scopes,
+                )
+                .await
+                .unwrap(),
+            ),
             should_auth,
         }
     }
@@ -47,9 +60,9 @@ impl ActixWebOpenId {
     }
 
     pub fn get_middleware(&self) -> openid_middleware::AuthenticateMiddlewareFactory {
-        openid_middleware::AuthenticateMiddlewareFactory::new(self.openid_client.clone(), self.should_auth)
+        openid_middleware::AuthenticateMiddlewareFactory::new(
+            self.openid_client.clone(),
+            self.should_auth,
+        )
     }
 }
-
-
-

@@ -23,3 +23,7 @@ anyhow = "1.0.79"
 url = "2.5.0"
 log = "0.4.20"
 serde_derive = "1.0.126"
+[dev-dependencies]
+httpmock = "0.7.0"
+actix-http = "3.6.0"
+actix-service = "2.0.2"
