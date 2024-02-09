@@ -17,10 +17,10 @@ jobs:
       - name: Install clippy
         run: rustup component add clippy
       - name: Check build
-        run: cargo check --verbose
-      - name: Run tests
-        run: cargo test --verbose
-      - name: Run clippy
-        run: cargo clippy -- -D warnings
+        run: cargo check
       - name: Run fmt
         run: cargo fmt -- --check
+      - name: Run clippy
+        run: cargo clippy -- -D warnings
+      - name: Run tests
+        run: cargo test
