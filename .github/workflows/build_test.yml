@@ -15,6 +15,8 @@ jobs:
       image: rust
     steps:
       - uses: actions/checkout@v3
+      - name: Install clippy
+        run: rustup component add clippy
       - name: Check build
         run: cargo check --verbose
       - name: Run tests
