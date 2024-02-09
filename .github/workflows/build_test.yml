@@ -1,5 +1,4 @@
 name: rust_ci_build
-
 on:
   pull_request:
     branches: [ "master" ]
