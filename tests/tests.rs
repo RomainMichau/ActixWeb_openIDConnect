@@ -1,8 +1,8 @@
-use actix_http::body::{ MessageBody};
+use actix_http::body::MessageBody;
 use actix_http::header::HeaderMap;
-use actix_web::{Error};
 use actix_web::dev::ServiceResponse;
 use actix_web::web::{Buf, Bytes};
+use actix_web::Error;
 use actix_web_openidconnect::ActixWebOpenId;
 use httpmock::Method::GET;
 use httpmock::{Mock, MockServer};
@@ -51,9 +51,7 @@ struct TestResponse {
     body: Bytes,
 }
 
-async fn actix_response_to_test_response(
-    resp: Result<ServiceResponse, Error>,
-) -> TestResponse {
+async fn actix_response_to_test_response(resp: Result<ServiceResponse, Error>) -> TestResponse {
     match resp {
         Ok(http_resp) => {
             let status = http_resp.status().as_u16();
@@ -69,7 +67,9 @@ async fn actix_response_to_test_response(
             let http_resp = err_resp.error_response();
             let status = http_resp.status().as_u16();
             let headers = http_resp.headers().clone();
-            let body = actix_web::body::to_bytes(http_resp.into_body()).await.unwrap();
+            let body = actix_web::body::to_bytes(http_resp.into_body())
+                .await
+                .unwrap();
             TestResponse {
                 status,
                 headers,
@@ -103,12 +103,17 @@ async fn test_add() {
     oidc_endpoints_mock.keys_endpoint_mock.assert();
 
     let mock_app = mock_auth_api::get_mock_auth_api(&open_id_actix_web).await;
-    let req = actix_web::test::TestRequest::get().uri("/is_auth/hello").to_request();
-    let resp = actix_response_to_test_response(actix_web::test::try_call_service(&mock_app, req).await).await;
+    let req = actix_web::test::TestRequest::get()
+        .uri("/is_auth/hello")
+        .to_request();
+    let resp =
+        actix_response_to_test_response(actix_web::test::try_call_service(&mock_app, req).await)
+            .await;
     assert_eq!(resp.status, 302);
     resp.headers.get("location").unwrap();
-    let query = Url::parse(resp.headers.get("location").unwrap().to_str().unwrap()).unwrap().query_pairs();
+    let query = Url::parse(resp.headers.get("location").unwrap().to_str().unwrap())
+        .unwrap()
+        .query_pairs();
     let body = actix_web::body::to_bytes(resp.body).await.unwrap();
     println!("body: {:?}", body);
-
 }
