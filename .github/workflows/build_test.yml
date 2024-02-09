@@ -1,5 +1,4 @@
 name: rust_ci_build
-
 on:
   pull_request:
     branches: [ "master" ]
@@ -15,13 +14,15 @@ jobs:
       image: rust
     steps:
       - uses: actions/checkout@v3
-      - name: Install clippy
-        run: rustup component add clippy
+      - name: Install clippy and rustfmt
+        run: |
+          rustup component add clippy
+          rustup component add rustfmt
       - name: Check build
-        run: cargo check --verbose
-      - name: Run tests
-        run: cargo test --verbose
-      - name: Run clippy
-        run: cargo clippy -- -D warnings
+        run: cargo check
       - name: Run fmt
         run: cargo fmt -- --check
+      - name: Run clippy
+        run: cargo clippy -- -D warnings
+      - name: Run tests
+        run: cargo test
