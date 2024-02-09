@@ -14,8 +14,10 @@ jobs:
       image: rust
     steps:
       - uses: actions/checkout@v3
-      - name: Install clippy
-        run: rustup component add clippy
+      - name: Install clippy and rustfmt
+        run: |
+          rustup component add clippy
+          rustup component add rustfmt
       - name: Check build
         run: cargo check
       - name: Run fmt
