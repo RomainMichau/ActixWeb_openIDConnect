@@ -8,7 +8,7 @@ Rely on the excellent [openidconnect-rs](https://github.com/ramosbugs/openidconn
 ### Cargo.toml
 ```toml
 [dependencies]
-actix-web-openid = "~0.1.2"
+actix_web_openidconnect = "~0.1.2"
 ```
 ### main.rs
 ```rust  
