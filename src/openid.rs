@@ -23,6 +23,7 @@ pub struct OpenID {
     provider_metadata: ExtendedProviderMetadata,
     post_logout_redirect_url: Option<String>,
     scopes: Vec<Scope>,
+    additional_audiences: Vec<String>,
 }
 
 pub struct OpenIDTokens {
@@ -77,6 +78,7 @@ impl OpenID {
         issuer_url: String,
         post_logout_redirect_url: Option<String>,
         scopes: Vec<String>,
+        additional_audiences: Vec<String>,
     ) -> Result<Self> {
         let provider_metadata = ExtendedProviderMetadata::discover_async(
             IssuerUrl::new(issuer_url)?,
@@ -97,6 +99,7 @@ impl OpenID {
             provider_metadata,
             post_logout_redirect_url,
             scopes: scopes.iter().map(|s| Scope::new(s.to_string())).collect(),
+            additional_audiences,
         })
     }
 
@@ -151,7 +154,13 @@ impl OpenID {
         nonce: String,
     ) -> Result<&'a IdTokenClaims<EmptyAdditionalClaims, CoreGenderClaim>, ClaimsVerificationError>
     {
-        id_token.claims(&self.client.id_token_verifier(), &Nonce::new(nonce))
+        id_token.claims(
+            &self
+                .client
+                .id_token_verifier()
+                .set_other_audience_verifier_fn(|aud| self.additional_audiences.contains(aud)),
+            &Nonce::new(nonce),
+        )
     }
 
     pub(crate) fn get_logout_uri(&self, id_token: &IdToken) -> Url {

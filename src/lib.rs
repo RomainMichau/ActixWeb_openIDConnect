@@ -32,6 +32,7 @@ impl ActixWebOpenId {
         should_auth: fn(&ServiceRequest) -> bool,
         post_logout_redirect_url: Option<String>,
         scopes: Vec<String>,
+        additional_audiences: Vec<String>,
     ) -> Self {
         ActixWebOpenId {
             openid_client: Arc::new(
@@ -42,6 +43,7 @@ impl ActixWebOpenId {
                     issuer_url,
                     post_logout_redirect_url,
                     scopes,
+                    additional_audiences,
                 )
                 .await
                 .unwrap(),
