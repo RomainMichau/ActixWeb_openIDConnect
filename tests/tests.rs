@@ -97,6 +97,7 @@ async fn test_add() {
         should_auth,
         None,
         vec!["bo".to_string()],
+        vec![],
     )
     .await;
     oidc_endpoints_mock.metadata_endpoint_mock.assert();
