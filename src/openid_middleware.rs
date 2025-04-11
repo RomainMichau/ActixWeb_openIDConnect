@@ -265,7 +265,10 @@ async fn auth_endpoint(
     };
 
     let tkn = open_id_client
-        .get_token(AuthorizationCode::new(query.code.to_string()), pkce_verifier)
+        .get_token(
+            AuthorizationCode::new(query.code.to_string()),
+            pkce_verifier,
+        )
         .await
         .map_err(|err| {
             log::warn!("Error getting token: {err}");
@@ -341,9 +344,7 @@ impl FromRequest for Authenticated {
 
     fn from_request(req: &HttpRequest, _payload: &mut actix_web::dev::Payload) -> Self::Future {
         let value = req.extensions().get::<AuthenticatedUser>().cloned();
-        let result = value
-            .ok_or(ErrorUnauthorized("Unauthorized"))
-            .map(Self);
+        let result = value.ok_or(ErrorUnauthorized("Unauthorized")).map(Self);
 
         ready(result)
     }
