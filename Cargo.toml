@@ -13,12 +13,13 @@ license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-openidconnect = "3"
+openidconnect = "4"
+oauth2 = "5"
 actix-web = "4"
 serde_json = "1"
 serde = "1"
 futures-util = "0.3"
-derive_more = "0.99"
+derive_more = "2"
 anyhow = "1"
 url = "2"
 log = "0.4"

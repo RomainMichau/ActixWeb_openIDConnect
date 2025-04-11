@@ -10,22 +10,23 @@ use actix_web::cookie::{Cookie, SameSite};
 use actix_web::dev::forward_ready;
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::error::ErrorUnauthorized;
+use actix_web::http::header::HeaderValue;
 use actix_web::http::header::LOCATION;
 use actix_web::http::StatusCode;
 use actix_web::{error, get, web, Error, FromRequest, HttpMessage, HttpRequest, HttpResponse};
 use futures_util::future::LocalBoxFuture;
 use openidconnect::core::CoreGenderClaim;
-use openidconnect::http::HeaderValue;
 use openidconnect::{AccessToken, AuthorizationCode, EmptyAdditionalClaims, UserInfoClaims};
 use serde::Deserialize;
 
-use crate::openid::{IdToken, OpenID};
+use crate::openid::{ExtendedIdToken, OpenID};
 
 enum AuthCookies {
     AccessToken,
     IdToken,
     RefreshToken,
     UserInfo,
+    PkceVerifier,
     Nonce,
 }
 
@@ -47,6 +48,9 @@ impl Display for AuthCookies {
             AuthCookies::Nonce => {
                 write!(f, "nonce")
             }
+            AuthCookies::PkceVerifier => {
+                write!(f, "pkce_verifier")
+            }
         }
     }
 }
@@ -58,16 +62,17 @@ pub struct AuthenticatedUser {
 
 #[derive(Debug, derive_more::Error)]
 enum AuthError {
-    NotAuthenticated { issuer_url: String, nonce: String },
+    NotAuthenticated {
+        issuer_url: String,
+        nonce: String,
+        pkce_verifier: String,
+    },
 }
 
 impl Display for AuthError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            AuthError::NotAuthenticated {
-                issuer_url: _issuer_url,
-                nonce: _nonce,
-            } => {
+            AuthError::NotAuthenticated { .. } => {
                 write!(f, "Not authenticated")
             }
         }
@@ -84,9 +89,17 @@ impl error::ResponseError for AuthError {
     fn error_response(&self) -> HttpResponse<BoxBody> {
         let mut resp = HttpResponse::build(self.status_code()).body(self.to_string());
         match self {
-            AuthError::NotAuthenticated { issuer_url, nonce } => {
+            AuthError::NotAuthenticated {
+                issuer_url,
+                nonce,
+                pkce_verifier,
+            } => {
                 resp.add_cookie(&Cookie::build(AuthCookies::Nonce.to_string(), nonce).finish())
                     .unwrap();
+                resp.add_cookie(
+                    &Cookie::build(AuthCookies::PkceVerifier.to_string(), pkce_verifier).finish(),
+                )
+                .unwrap();
                 resp.headers_mut()
                     .insert(LOCATION, HeaderValue::from_str(issuer_url).unwrap());
                 resp
@@ -99,6 +112,7 @@ pub struct OpenIdMiddleware<S> {
     openid_client: Arc<OpenID>,
     service: Rc<S>,
     should_auth: fn(&ServiceRequest) -> bool,
+    use_pkce: bool,
 }
 
 impl<S> OpenIdMiddleware<S> {}
@@ -120,12 +134,14 @@ where
         let should_auth = self.should_auth;
         let path = req.path().to_string();
         let path2 = req.path().to_string();
+        let use_pkce = self.use_pkce;
 
         let redirect_to_auth = move || -> AuthError {
-            let url = client2.get_authorization_url(path.clone());
+            let url = client2.get_authorization_url(path.clone(), use_pkce);
             AuthError::NotAuthenticated {
                 issuer_url: url.url.to_string(),
                 nonce: url.nonce.secret().to_string(),
+                pkce_verifier: url.pkce_verifier.unwrap_or_default(),
             }
         };
 
@@ -158,13 +174,19 @@ where
 pub struct AuthenticateMiddlewareFactory {
     client: Arc<OpenID>,
     should_auth: fn(&ServiceRequest) -> bool,
+    use_pkce: bool,
 }
 
 impl AuthenticateMiddlewareFactory {
-    pub(crate) fn new(client: Arc<OpenID>, should_auth: fn(&ServiceRequest) -> bool) -> Self {
+    pub(crate) fn new(
+        client: Arc<OpenID>,
+        should_auth: fn(&ServiceRequest) -> bool,
+        use_pkce: bool,
+    ) -> Self {
         AuthenticateMiddlewareFactory {
             client,
             should_auth,
+            use_pkce,
         }
     }
 }
@@ -184,6 +206,7 @@ where
             openid_client: self.client.clone(),
             service: Rc::new(service),
             should_auth: self.should_auth,
+            use_pkce: self.use_pkce,
         }))
     }
 }
@@ -206,7 +229,7 @@ async fn logout_endpoint(
         }
         Some(id) => id.value().to_string(),
     };
-    let logout_uri = open_id_client.get_logout_uri(&IdToken::from_str(id_token.as_str()).unwrap());
+    let logout_uri = open_id_client.get_logout_uri(&ExtendedIdToken::from_str(id_token.as_str())?);
     let mut response = HttpResponse::Found();
     response.append_header((LOCATION, logout_uri.to_string()));
     Ok(response.finish())
@@ -236,12 +259,18 @@ async fn auth_endpoint(
             return Ok(HttpResponse::BadRequest().body(e.to_string()));
         }
     };
-    let claim = match open_id_client.verify_id_token(&tkn.id_token, nonce).await {
-        Ok(claim) => claim,
-        Err(e) => {
-            log::warn!("Error verifying id token: {}", e);
-            return Err(error::ErrorInternalServerError("invalid id token"));
-        }
+    let claims = if let Some(ref id_token) = tkn.id_token {
+        Some(
+            open_id_client
+                .verify_id_token(Some(id_token), nonce)
+                .await
+                .map_err(|err| {
+                    log::warn!("Error verifying id token: {}", err);
+                    error::ErrorInternalServerError("invalid id token")
+                })?,
+        )
+    } else {
+        None
     };
     let mut response = HttpResponse::Found();
     response
@@ -254,38 +283,40 @@ async fn auth_endpoint(
             .same_site(SameSite::Lax)
             .secure(true)
             .finish(),
-        )
-        .cookie(
-            Cookie::build::<String, String>(
-                AuthCookies::UserInfo.to_string(),
-                serde_json::to_string(claim).unwrap(),
-            )
-            .same_site(SameSite::Lax)
-            .finish(),
-        )
-        .cookie(
-            Cookie::build::<String, String>(
-                AuthCookies::IdToken.to_string(),
-                tkn.id_token.to_string(),
-            )
-            .same_site(SameSite::Lax)
-            .secure(true)
-            .finish(),
         );
-    match tkn.refresh_token {
-        Some(refresh_token) => Ok(response
-            .cookie(
-                Cookie::build(
-                    AuthCookies::RefreshToken.to_string(),
-                    refresh_token.secret(),
-                )
+
+    if let Some(ref id_token) = tkn.id_token {
+        response.cookie(
+            Cookie::build::<String, String>(AuthCookies::IdToken.to_string(), id_token.to_string())
                 .same_site(SameSite::Lax)
                 .secure(true)
                 .finish(),
-            )
-            .finish()),
-        None => Ok(response.finish()),
+        );
     }
+
+    if let Some(claims) = claims {
+        response.cookie(
+            Cookie::build::<String, String>(
+                AuthCookies::UserInfo.to_string(),
+                serde_json::to_string(claims)?,
+            )
+            .same_site(SameSite::Lax)
+            .finish(),
+        );
+    }
+
+    Ok(if let Some(ref token) = tkn.refresh_token {
+        response
+            .cookie(
+                Cookie::build(AuthCookies::RefreshToken.to_string(), token.secret())
+                    .same_site(SameSite::Lax)
+                    .secure(true)
+                    .finish(),
+            )
+            .finish()
+    } else {
+        response.finish()
+    })
 }
 
 pub struct Authenticated(AuthenticatedUser);
@@ -294,10 +325,7 @@ impl FromRequest for Authenticated {
     type Error = Error;
     type Future = Ready<Result<Self, Self::Error>>;
 
-    fn from_request(
-        req: &actix_web::HttpRequest,
-        _payload: &mut actix_web::dev::Payload,
-    ) -> Self::Future {
+    fn from_request(req: &HttpRequest, _payload: &mut actix_web::dev::Payload) -> Self::Future {
         let value = req.extensions().get::<AuthenticatedUser>().cloned();
         let result = match value {
             Some(v) => Ok(Authenticated(v)),

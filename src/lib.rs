@@ -21,20 +21,23 @@ pub mod openid_middleware;
 pub struct ActixWebOpenId {
     openid_client: Arc<OpenID>,
     should_auth: fn(&ServiceRequest) -> bool,
+    use_pkce: bool,
 }
 
 impl ActixWebOpenId {
+    #[warn(clippy::too_many_arguments)]
     pub async fn init(
         client_id: String,
-        client_secret: String,
+        client_secret: Option<String>,
         redirect_url: String,
         issuer_url: String,
         should_auth: fn(&ServiceRequest) -> bool,
         post_logout_redirect_url: Option<String>,
         scopes: Vec<String>,
         additional_audiences: Vec<String>,
+        use_pkce: bool,
     ) -> Self {
-        ActixWebOpenId {
+        Self {
             openid_client: Arc::new(
                 OpenID::init(
                     client_id,
@@ -49,6 +52,7 @@ impl ActixWebOpenId {
                 .unwrap(),
             ),
             should_auth,
+            use_pkce,
         }
     }
 
@@ -65,6 +69,7 @@ impl ActixWebOpenId {
         openid_middleware::AuthenticateMiddlewareFactory::new(
             self.openid_client.clone(),
             self.should_auth,
+            self.use_pkce,
         )
     }
 }
