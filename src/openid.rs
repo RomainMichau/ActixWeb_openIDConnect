@@ -1,8 +1,8 @@
 use anyhow::Result;
 use oauth2::basic::{BasicErrorResponseType, BasicRevocationErrorResponse};
 use oauth2::{
-    EndpointMaybeSet, EndpointNotSet, EndpointSet, PkceCodeChallenge, StandardErrorResponse,
-    StandardRevocableToken,
+    EndpointMaybeSet, EndpointNotSet, EndpointSet, PkceCodeChallenge, PkceCodeVerifier,
+    StandardErrorResponse, StandardRevocableToken,
 };
 use openidconnect::core::{
     CoreAuthDisplay, CoreAuthPrompt, CoreAuthenticationFlow, CoreClaimName, CoreClaimType,
@@ -29,6 +29,7 @@ pub struct OpenID {
     post_logout_redirect_url: Option<String>,
     scopes: Vec<Scope>,
     additional_audiences: Vec<String>,
+    pub(crate) use_pkce: bool,
 }
 
 pub struct OpenIDTokens {
@@ -97,6 +98,7 @@ fn get_http_client() -> reqwest::Client {
 }
 
 impl OpenID {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn init(
         client_id: String,
         client_secret: Option<String>,
@@ -105,6 +107,7 @@ impl OpenID {
         post_logout_redirect_url: Option<String>,
         scopes: Vec<String>,
         additional_audiences: Vec<String>,
+        use_pkce: bool,
     ) -> Result<Self> {
         let provider_metadata = ExtendedProviderMetadata::discover_async(
             IssuerUrl::new(issuer_url)?,
@@ -113,7 +116,6 @@ impl OpenID {
         .await
         .expect("Failed to discover OpenID Provider");
 
-        let has_client_secret = client_secret.is_some();
         let client = CoreClient::from_provider_metadata(
             provider_metadata.clone(),
             ClientId::new(client_id.to_string()),
@@ -123,14 +125,13 @@ impl OpenID {
             RedirectUrl::new(redirect_uri.to_string()).expect("Invalid redirect URL"),
         );
 
-        let client = if has_client_secret { client } else { client };
-
         Ok(Self {
             client,
             provider_metadata,
             post_logout_redirect_url,
             scopes: scopes.iter().map(|s| Scope::new(s.to_string())).collect(),
             additional_audiences,
+            use_pkce,
         })
     }
 
@@ -165,13 +166,20 @@ impl OpenID {
     pub(crate) async fn get_token(
         &self,
         authorization_code: AuthorizationCode,
+        pkce_verifier: Option<String>,
     ) -> Result<OpenIDTokens> {
-        let token_response = self
-            .client
-            .exchange_code(authorization_code)?
-            .request_async(&get_http_client())
-            .await?;
+        let token_response = if let Some(pkce_verifier) = pkce_verifier {
+            self.client
+                .exchange_code(authorization_code)?
+                .set_pkce_verifier(PkceCodeVerifier::new(pkce_verifier))
+        } else {
+            self.client.exchange_code(authorization_code)?
+        }
+        .request_async(&get_http_client())
+        .await?;
+
         let id_token = token_response.id_token().cloned();
+
         Ok(OpenIDTokens {
             access_token: token_response.access_token().clone(),
             id_token,
@@ -192,22 +200,16 @@ impl OpenID {
 
     pub(crate) async fn verify_id_token<'a>(
         &self,
-        id_token: Option<&'a ExtendedIdToken>,
+        id_token: &'a ExtendedIdToken,
         nonce: String,
     ) -> Result<&'a CoreIdTokenClaims, ClaimsVerificationError> {
-        if let Some(id_token) = id_token {
-            id_token.claims(
-                &self
-                    .client
-                    .id_token_verifier()
-                    .set_other_audience_verifier_fn(|aud| self.additional_audiences.contains(aud)),
-                &Nonce::new(nonce),
-            )
-        } else {
-            Err(ClaimsVerificationError::Unsupported(
-                "No id token given".to_string(),
-            ))
-        }
+        id_token.claims(
+            &self
+                .client
+                .id_token_verifier()
+                .set_other_audience_verifier_fn(|aud| self.additional_audiences.contains(aud)),
+            &Nonce::new(nonce),
+        )
     }
 
     pub(crate) fn get_logout_uri(&self, id_token: &ExtendedIdToken) -> Url {
@@ -219,6 +221,7 @@ impl OpenID {
                 .unwrap(),
         )
         .set_id_token_hint(id_token);
+
         if let Some(ref uri) = self.post_logout_redirect_url {
             logout_request = logout_request
                 .set_post_logout_redirect_uri(PostLogoutRedirectUrl::new(uri.to_string()).unwrap());

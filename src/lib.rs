@@ -25,7 +25,7 @@ pub struct ActixWebOpenId {
 }
 
 impl ActixWebOpenId {
-    #[warn(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub async fn init(
         client_id: String,
         client_secret: Option<String>,
@@ -47,6 +47,7 @@ impl ActixWebOpenId {
                     post_logout_redirect_url,
                     scopes,
                     additional_audiences,
+                    use_pkce,
                 )
                 .await
                 .unwrap(),

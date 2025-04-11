@@ -241,28 +241,41 @@ async fn auth_endpoint(
     open_id_client: web::Data<Arc<OpenID>>,
     query: web::Query<AuthQuery>,
 ) -> actix_web::Result<HttpResponse> {
-    let nonce = match req.cookie(AuthCookies::Nonce.to_string().as_str()) {
-        None => {
+    let nonce = req
+        .cookie(AuthCookies::Nonce.to_string().as_str())
+        .ok_or_else(|| {
             log::debug!("No nonce, redirecting to auth");
-            return Err(error::ErrorBadRequest("No nonce"));
-        }
-        Some(n) => n.value().to_string(),
+            error::ErrorBadRequest("No nonce")
+        })?
+        .value()
+        .to_string();
+
+    let pkce_verifier = if open_id_client.use_pkce {
+        Some(
+            req.cookie(AuthCookies::PkceVerifier.to_string().as_str())
+                .ok_or_else(|| {
+                    log::debug!("No pkce_verifier, redirecting to auth");
+                    error::ErrorBadRequest("No pkce verifier")
+                })?
+                .value()
+                .to_string(),
+        )
+    } else {
+        None
     };
 
-    let tkn = match open_id_client
-        .get_token(AuthorizationCode::new(query.code.to_string()))
+    let tkn = open_id_client
+        .get_token(AuthorizationCode::new(query.code.to_string()), pkce_verifier)
         .await
-    {
-        Ok(tkn) => tkn,
-        Err(e) => {
-            log::warn!("Error getting token: {}", e);
-            return Ok(HttpResponse::BadRequest().body(e.to_string()));
-        }
-    };
+        .map_err(|err| {
+            log::warn!("Error getting token: {err}");
+            error::ErrorBadRequest("Error getting token")
+        })?;
+
     let claims = if let Some(ref id_token) = tkn.id_token {
         Some(
             open_id_client
-                .verify_id_token(Some(id_token), nonce)
+                .verify_id_token(id_token, nonce)
                 .await
                 .map_err(|err| {
                     log::warn!("Error verifying id token: {}", err);
@@ -272,6 +285,7 @@ async fn auth_endpoint(
     } else {
         None
     };
+
     let mut response = HttpResponse::Found();
     response
         .append_header((LOCATION, query.state.to_string()))
@@ -327,10 +341,10 @@ impl FromRequest for Authenticated {
 
     fn from_request(req: &HttpRequest, _payload: &mut actix_web::dev::Payload) -> Self::Future {
         let value = req.extensions().get::<AuthenticatedUser>().cloned();
-        let result = match value {
-            Some(v) => Ok(Authenticated(v)),
-            None => Err(ErrorUnauthorized("Unauthorized")),
-        };
+        let result = value
+            .ok_or(ErrorUnauthorized("Unauthorized"))
+            .map(Self);
+
         ready(result)
     }
 }
