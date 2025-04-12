@@ -10,7 +10,7 @@ Rely on the excellent [openidconnect-rs](https://github.com/ramosbugs/openidconn
 
 ```toml
 [dependencies]
-actix_web_openidconnect = "~0.1.2"
+actix_web_openidconnect = "~0.2.0"
 ```
 
 ### main.rs
@@ -38,13 +38,17 @@ async fn main() -> std::io::Result<()> {
     let should_auth = |req: &ServiceRequest| {
         !req.path().starts_with("/no_auth") && req.method() != actix_web::http::Method::OPTIONS
     };
-    let openid = ActixWebOpenId::init("client_id".to_string(),
-                                      "client_secret".to_string(),
-                                      "http://localhost:8081/auth_callback".to_string(),
-                                      "https://my-keycloak.com/realms/myrealm".to_string(),
-                                      should_auth,
-                                      Some("http://localhost:8081/is_auth/hello".to_string()),
-                                      vec!["openid".to_string()]).await;
+    let openid = ActixWebOpenId::builder(
+      "test_client_id".to_string(),
+      "http://redirect_url.com/auth".to_string(),
+      issuer_url,
+    )
+            .client_secret("test_client_secret".to_string())
+            .should_auth(should_auth)
+            .scopes(vec!["openid".to_string()])
+            .build_and_init()
+            .await
+            .unwrap();
     HttpServer::new(move || App::new()
         .wrap(openid.get_middleware())
         .configure(openid.configure_open_id())
