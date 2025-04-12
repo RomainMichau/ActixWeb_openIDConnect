@@ -1,16 +1,20 @@
 # Actix-Web openid
+
 Lightweight async OpenID Connect (OIDC) client and middleware for Actix-Web.  
 Support for the Authorization Code Flow  
-Rely on the excellent [openidconnect-rs](https://github.com/ramosbugs/openidconnect-rs) library for rust 
-
+Rely on the excellent [openidconnect-rs](https://github.com/ramosbugs/openidconnect-rs) library for rust
 
 # Example
+
 ### Cargo.toml
+
 ```toml
 [dependencies]
 actix_web_openidconnect = "~0.1.2"
 ```
+
 ### main.rs
+
 ```rust  
 use actix_web::{App, get, HttpResponse, HttpServer, Responder};
 use actix_web::dev::ServiceRequest;
@@ -53,8 +57,8 @@ async fn main() -> std::io::Result<()> {
         .await
 }
 ```  
-# Parameters
 
+# Parameters
 
 | name                     | description                                                                                                                                                                                               | Example                                                                                                                        | doc                                                                                                                  |
 |--------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------|
@@ -65,32 +69,53 @@ async fn main() -> std::io::Result<()> {
 | should_auth              | Closure taking an `actix_web::service::ServiceRequest` in input and returning a boolean. If true the request will need to be authenticate. Allows you to configure which endpoint should be authenticated | ``` \|req: &ServiceRequest\| {  !req.path().starts_with("/no_auth") && !req.method() == actix_web::http::Method::OPTIONS };``` |                                                                                                                      |
 | post_logout_redirect_url | Optional url on which the user will be redirected after a logout. Usually need to be registered in the OIDC provider                                                                                      | "http://localhost:8080"                                                                                                        | [keycloak](https://www.keycloak.org/docs/latest/server_admin/#con-basic-settings_server_administration_guide)        |
 | scopes                   | List of scope to be used during the authentication. "openid" scope is required for openid flow                                                                                                            | [openid, profile, email]                                                                                                       | [keycloak](https://www.keycloak.org/docs/latest/server_admin/#_client_scopes)                                        |
+| use_pkce                 | Enforce the usage of PKCE (Proof Key for Code Exchange Code Challenge Method). Need to be supported by the OIDC provider                                                                                  | `true`                                                                                                                         | [keycloak](https://www.keycloak.org/docs/latest/server_admin/#proc-creating-oidc-client_server_administration_guide) |
+| additional_audiences     | Additional audiences claims trusted by client                                                                                                                                                             | [myOtherClient1, myOtherClient2]                                                                                               | [keycloak](https://www.keycloak.org/docs/latest/authorization_services/index.html)                                   |
 
 # Features
+
 ### Authentication middleware
+
 Add a middleware checking user authentication information, and authenticate the user if needed.  
 Make authentication information available to the endpoint handler
+
 ### Login
+
 Automatically redirect the user to the OIDC provider when requiring authentication.  
 Open a callback endpoint (/auth_callback) to redirect the user at the end of the authorization code flow
 Will store access token, refresh token, id_token and user info in cookies
+
 ### Logout
-Open a logout endpoint (/logout). Calling this endpoint will automatically redirect the user to the openID connect logout
+
+Open a logout endpoint (/logout). Calling this endpoint will automatically redirect the user to the openID connect
+logout
+
 ### Front end
+
 Make user info contained in the ID token available to the front end through a cookie user_info
 
 # Disclaimer
+
 ## Metadata
-This library expect 1 additional metadata to be available on the OIDC provider from what is defined in the [OIDC RFC](https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata):
-- `end_session_endpoint`: The OIDC provider logout endpoint. (https://openid.net/specs/openid-connect-session-1_0-17.html)
-This metadata is available in all modern OIDC provider metadata endpoint (keycloak, okta, auth0...)
+
+This library expect 1 additional metadata to be available on the OIDC provider from what is defined in
+the [OIDC RFC](https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata):
+
+- `end_session_endpoint`: The OIDC provider logout
+  endpoint. (https://openid.net/specs/openid-connect-session-1_0-17.html)
+  This metadata is available in all modern OIDC provider metadata endpoint (keycloak, okta, auth0...)
 
 ## Access token
-This library is for now agnostic from the Access Token format and use the /userinfo endpoint to get user information and validate this token  
-This is mainly because the openidconnect-rs library stick to the OIDC RFC which does not define the access token format.  
-However, as the de-facto standard for access token format is JWT (https://datatracker.ietf.org/doc/html/rfc9068) the library should be updated to support access token signature it in the future
+
+This library is for now agnostic from the Access Token format and use the /userinfo endpoint to get user information and
+validate this token  
+This is mainly because the openidconnect-rs library stick to the OIDC RFC which does not define the access token
+format.  
+However, as the de-facto standard for access token format is JWT (https://datatracker.ietf.org/doc/html/rfc9068) the
+library should be updated to support access token signature it in the future
 
 # TODO
+
+- [x] Add support for PKCE. (Done, thanks to [@DerKnerd](https://github.com/DerKnerd))
 - [ ] Add support for refresh token
-- [ ] Add support for PKCE
 - [ ] Add support for JWT access token (https://datatracker.ietf.org/doc/html/rfc9068)
