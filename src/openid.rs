@@ -51,7 +51,7 @@ pub struct AdditionalMetadata {
 
 impl AdditionalProviderMetadata for AdditionalMetadata {}
 
-pub type ExtendedProviderMetadata = ProviderMetadata<
+pub(crate) type ExtendedProviderMetadata = ProviderMetadata<
     AdditionalMetadata,
     CoreAuthDisplay,
     CoreClientAuthMethod,

@@ -87,18 +87,17 @@ async fn test_add() {
     let should_auth =
         |req: &actix_web::dev::ServiceRequest| !req.path().starts_with("/no_auth/hello");
     // using common code.
-    let open_id_actix_web = ActixWebOpenId::init(
+    let open_id_actix_web = ActixWebOpenId::builder(
         "bo".to_string(),
-        Some("bo".to_string()),
         "http://redirect_url.com/auth".to_string(),
         issuer_url,
-        should_auth,
-        None,
-        vec!["bo".to_string()],
-        vec![],
-        false,
     )
-    .await;
+    .client_secret("bo".to_string())
+    .should_auth(should_auth)
+    .scopes(vec!["bo".to_string()])
+    .build_and_init()
+    .await
+    .unwrap();
     oidc_endpoints_mock.metadata_endpoint_mock.assert();
     oidc_endpoints_mock.keys_endpoint_mock.assert();
 
