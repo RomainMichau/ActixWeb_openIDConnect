@@ -23,37 +23,87 @@ pub struct ActixWebOpenId {
     should_auth: fn(&ServiceRequest) -> bool,
     use_pkce: bool,
 }
+pub struct ActixWebOpenIdBuilder {
+    client_id: String,
+    client_secret: Option<String>,
+    redirect_url: String,
+    issuer_url: String,
+    should_auth: fn(&ServiceRequest) -> bool,
+    post_logout_redirect_url: Option<String>,
+    scopes: Vec<String>,
+    additional_audiences: Vec<String>,
+    use_pkce: bool,
+}
 
-impl ActixWebOpenId {
-    #[allow(clippy::too_many_arguments)]
-    pub async fn init(
-        client_id: String,
-        client_secret: Option<String>,
-        redirect_url: String,
-        issuer_url: String,
-        should_auth: fn(&ServiceRequest) -> bool,
-        post_logout_redirect_url: Option<String>,
-        scopes: Vec<String>,
-        additional_audiences: Vec<String>,
-        use_pkce: bool,
-    ) -> Self {
-        Self {
+impl ActixWebOpenIdBuilder {
+    pub fn client_secret(mut self, secret: String) -> Self {
+        self.client_secret = Some(secret);
+        self
+    }
+
+    pub fn should_auth(mut self, f: fn(&ServiceRequest) -> bool) -> Self {
+        self.should_auth = f;
+        self
+    }
+
+    pub fn post_logout_redirect_url(mut self, url: String) -> Self {
+        self.post_logout_redirect_url = Some(url);
+        self
+    }
+
+    pub fn scopes(mut self, scopes: Vec<String>) -> Self {
+        self.scopes = scopes;
+        self
+    }
+
+    pub fn additional_audiences(mut self, audiences: Vec<String>) -> Self {
+        self.additional_audiences = audiences;
+        self
+    }
+
+    pub fn use_pkce(mut self, pkce: bool) -> Self {
+        self.use_pkce = pkce;
+        self
+    }
+
+    pub async fn build_and_init(self) -> ActixWebOpenId {
+        ActixWebOpenId {
             openid_client: Arc::new(
                 OpenID::init(
-                    client_id,
-                    client_secret,
-                    redirect_url,
-                    issuer_url,
-                    post_logout_redirect_url,
-                    scopes,
-                    additional_audiences,
-                    use_pkce,
+                    self.client_id,
+                    self.client_secret,
+                    self.redirect_url,
+                    self.issuer_url,
+                    self.post_logout_redirect_url,
+                    self.scopes,
+                    self.additional_audiences,
+                    self.use_pkce,
                 )
                 .await
                 .unwrap(),
             ),
-            should_auth,
-            use_pkce,
+            should_auth: self.should_auth,
+            use_pkce: self.use_pkce,
+        }
+    }
+}
+
+impl ActixWebOpenId {
+    pub fn builder(
+        client_id: String,
+        redirect_url: String,
+        issuer_url: String,
+    ) -> ActixWebOpenIdBuilder {
+        ActixWebOpenIdBuilder {
+            client_id,
+            client_secret: None,
+            redirect_url,
+            issuer_url,
+            should_auth: |_| true, // default behavior
+            post_logout_redirect_url: None,
+            scopes: vec!["openid".into()],
+            additional_audiences: vec![],
+            use_pkce: false,
         }
     }
 
