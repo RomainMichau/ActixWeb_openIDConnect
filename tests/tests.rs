@@ -1,12 +1,10 @@
-use actix_http::body::MessageBody;
 use actix_http::header::HeaderMap;
 use actix_web::dev::ServiceResponse;
-use actix_web::web::{Buf, Bytes};
+use actix_web::web::Bytes;
 use actix_web::Error;
 use actix_web_openidconnect::ActixWebOpenId;
 use httpmock::Method::GET;
 use httpmock::{Mock, MockServer};
-use url::Url;
 
 mod mock_auth_api;
 
@@ -91,13 +89,14 @@ async fn test_add() {
     // using common code.
     let open_id_actix_web = ActixWebOpenId::init(
         "bo".to_string(),
-        "bo".to_string(),
+        Some("bo".to_string()),
         "http://redirect_url.com/auth".to_string(),
         issuer_url,
         should_auth,
         None,
         vec!["bo".to_string()],
         vec![],
+        false,
     )
     .await;
     oidc_endpoints_mock.metadata_endpoint_mock.assert();
@@ -112,9 +111,6 @@ async fn test_add() {
             .await;
     assert_eq!(resp.status, 302);
     resp.headers.get("location").unwrap();
-    let query = Url::parse(resp.headers.get("location").unwrap().to_str().unwrap())
-        .unwrap()
-        .query_pairs();
     let body = actix_web::body::to_bytes(resp.body).await.unwrap();
     println!("body: {:?}", body);
 }
