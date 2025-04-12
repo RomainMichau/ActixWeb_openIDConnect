@@ -23,6 +23,7 @@ pub struct ActixWebOpenId {
     should_auth: fn(&ServiceRequest) -> bool,
     use_pkce: bool,
 }
+
 pub struct ActixWebOpenIdBuilder {
     client_id: String,
     client_secret: Option<String>,
@@ -78,14 +79,6 @@ impl ActixWebOpenIdBuilder {
                     self.scopes,
                     self.additional_audiences,
                     self.use_pkce,
-                )
-                .await
-                .unwrap(),
-            ),
-            should_auth: self.should_auth,
-            use_pkce: self.use_pkce,
-        }
-    }
 }
 
 impl ActixWebOpenId {
