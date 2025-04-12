@@ -37,8 +37,8 @@ pub struct ActixWebOpenIdBuilder {
 }
 
 impl ActixWebOpenIdBuilder {
-    pub fn client_secret(mut self, secret: String) -> Self {
-        self.client_secret = Some(secret);
+    pub fn client_secret(mut self, secret: impl Into<String>) -> Self {
+        self.client_secret = Some(secret.into());
         self
     }
 
@@ -47,8 +47,8 @@ impl ActixWebOpenIdBuilder {
         self
     }
 
-    pub fn post_logout_redirect_url(mut self, url: String) -> Self {
-        self.post_logout_redirect_url = Some(url);
+    pub fn post_logout_redirect_url(mut self, url: impl Into<String>) -> Self {
+        self.post_logout_redirect_url = Some(url.into());
         self
     }
 
@@ -67,8 +67,8 @@ impl ActixWebOpenIdBuilder {
         self
     }
 
-    pub async fn build_and_init(self) -> ActixWebOpenId {
-        ActixWebOpenId {
+    pub async fn build_and_init(self) -> anyhow::Result<ActixWebOpenId> {
+        Ok(ActixWebOpenId {
             openid_client: Arc::new(
                 OpenID::init(
                     self.client_id,
@@ -79,6 +79,13 @@ impl ActixWebOpenIdBuilder {
                     self.scopes,
                     self.additional_audiences,
                     self.use_pkce,
+                )
+                .await?,
+            ),
+            should_auth: self.should_auth,
+            use_pkce: self.use_pkce,
+        })
+    }
 }
 
 impl ActixWebOpenId {
