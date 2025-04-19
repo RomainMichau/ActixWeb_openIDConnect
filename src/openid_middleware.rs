@@ -13,7 +13,7 @@ use actix_web::error::ErrorUnauthorized;
 use actix_web::http::header::HeaderValue;
 use actix_web::http::header::LOCATION;
 use actix_web::http::StatusCode;
-use actix_web::{error, get, web, Error, FromRequest, HttpMessage, HttpRequest, HttpResponse};
+use actix_web::{error, web, Error, FromRequest, HttpMessage, HttpRequest, HttpResponse};
 use futures_util::future::LocalBoxFuture;
 use openidconnect::core::CoreGenderClaim;
 use openidconnect::{AccessToken, AuthorizationCode, EmptyAdditionalClaims, UserInfoClaims};
@@ -148,7 +148,7 @@ where
 
         let redirect_path = self.redirect_path.clone(); // <- clone it here
         Box::pin(async move {
-            if path2.starts_with(redirect_path.as_str()) || !should_auth(&req) {
+            if path2.starts_with(&redirect_path) || !should_auth(&req) {
                 return srv.call(req).await;
             }
             match req.cookie(AuthCookies::AccessToken.to_string().as_str()) {
@@ -223,8 +223,7 @@ pub(crate) struct AuthQuery {
     state: String,
 }
 
-#[get("/logout")]
-async fn logout_endpoint(
+pub(crate) async fn logout_endpoint(
     req: HttpRequest,
     open_id_client: web::Data<Arc<OpenID>>,
 ) -> actix_web::Result<HttpResponse> {
