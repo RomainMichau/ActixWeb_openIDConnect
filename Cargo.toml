@@ -6,7 +6,7 @@ documentation = "https://github.com/RomainMichau/ActixWeb_openIDConnect/"
 repository = "https://github.com/RomainMichau/ActixWeb_openIDConnect/"
 readme = "readMe.md"
 version = "0.2.0"
-authors = ["Romain Michau"]
+authors = ["Romain Michau", "Imanuel Ulbricht"]
 edition = "2021"
 license = "MIT"
 
@@ -23,8 +23,9 @@ derive_more = "2"
 anyhow = "1"
 log = "0.4"
 url = "2"
+env_logger = "0.11"
 
 [dev-dependencies]
 httpmock = "0.7.0"
-actix-http = "3.6.0"
-actix-service = "2.0.2"
+actix-http = "3.10.0"
+actix-service = "2.0.3"
