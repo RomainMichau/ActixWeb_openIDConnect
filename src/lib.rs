@@ -8,11 +8,11 @@
 
 use std::sync::Arc;
 
+use crate::openid::OpenID;
 use actix_web::dev::ServiceRequest;
 use actix_web::web;
 use actix_web::web::ServiceConfig;
-
-use crate::openid::OpenID;
+use url::Url;
 
 mod openid;
 pub mod openid_middleware;
@@ -22,12 +22,13 @@ pub struct ActixWebOpenId {
     openid_client: Arc<OpenID>,
     should_auth: fn(&ServiceRequest) -> bool,
     use_pkce: bool,
+    redirect_path: String,
 }
 
 pub struct ActixWebOpenIdBuilder {
     client_id: String,
     client_secret: Option<String>,
-    redirect_url: String,
+    redirect_url: Url,
     issuer_url: String,
     should_auth: fn(&ServiceRequest) -> bool,
     post_logout_redirect_url: Option<String>,
@@ -73,7 +74,7 @@ impl ActixWebOpenIdBuilder {
                 OpenID::init(
                     self.client_id,
                     self.client_secret,
-                    self.redirect_url,
+                    self.redirect_url.clone(),
                     self.issuer_url,
                     self.post_logout_redirect_url,
                     self.scopes,
@@ -84,6 +85,7 @@ impl ActixWebOpenIdBuilder {
             ),
             should_auth: self.should_auth,
             use_pkce: self.use_pkce,
+            redirect_path: self.redirect_url.path().to_string(),
         })
     }
 }
@@ -97,7 +99,7 @@ impl ActixWebOpenId {
         ActixWebOpenIdBuilder {
             client_id,
             client_secret: None,
-            redirect_url,
+            redirect_url: Url::parse(redirect_url.as_str()).expect("Invalid redirect URL"),
             issuer_url,
             should_auth: |_| true, // default behavior
             post_logout_redirect_url: None,
@@ -107,12 +109,15 @@ impl ActixWebOpenId {
         }
     }
 
-    pub fn configure_open_id(&self) -> impl Fn(&mut ServiceConfig) {
+    pub fn configure_open_id(&self) -> impl Fn(&mut ServiceConfig) + use<'_> {
         let client = self.openid_client.clone();
         move |cfg: &mut ServiceConfig| {
-            cfg.service(openid_middleware::auth_endpoint)
-                .service(openid_middleware::logout_endpoint)
-                .app_data(web::Data::new(client.clone()));
+            cfg.service(
+                web::resource(self.redirect_path.clone())
+                    .route(web::get().to(openid_middleware::auth_endpoint)),
+            )
+            .service(openid_middleware::logout_endpoint)
+            .app_data(web::Data::new(client.clone()));
         }
     }
 
@@ -121,6 +126,7 @@ impl ActixWebOpenId {
             self.openid_client.clone(),
             self.should_auth,
             self.use_pkce,
+            self.redirect_path.clone(),
         )
     }
 }

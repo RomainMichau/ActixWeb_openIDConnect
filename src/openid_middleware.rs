@@ -113,6 +113,7 @@ pub struct OpenIdMiddleware<S> {
     service: Rc<S>,
     should_auth: fn(&ServiceRequest) -> bool,
     use_pkce: bool,
+    redirect_path: String,
 }
 
 impl<S> OpenIdMiddleware<S> {}
@@ -145,8 +146,9 @@ where
             }
         };
 
+        let redirect_path = self.redirect_path.clone(); // <- clone it here
         Box::pin(async move {
-            if path2.starts_with("/auth_callback") || !should_auth(&req) {
+            if path2.starts_with(redirect_path.as_str()) || !should_auth(&req) {
                 return srv.call(req).await;
             }
             match req.cookie(AuthCookies::AccessToken.to_string().as_str()) {
@@ -175,6 +177,7 @@ pub struct AuthenticateMiddlewareFactory {
     client: Arc<OpenID>,
     should_auth: fn(&ServiceRequest) -> bool,
     use_pkce: bool,
+    redirect_path: String,
 }
 
 impl AuthenticateMiddlewareFactory {
@@ -182,11 +185,13 @@ impl AuthenticateMiddlewareFactory {
         client: Arc<OpenID>,
         should_auth: fn(&ServiceRequest) -> bool,
         use_pkce: bool,
+        redirect_path: String,
     ) -> Self {
         AuthenticateMiddlewareFactory {
             client,
             should_auth,
             use_pkce,
+            redirect_path,
         }
     }
 }
@@ -207,12 +212,13 @@ where
             service: Rc::new(service),
             should_auth: self.should_auth,
             use_pkce: self.use_pkce,
+            redirect_path: self.redirect_path.clone(),
         }))
     }
 }
 
 #[derive(Deserialize)]
-struct AuthQuery {
+pub(crate) struct AuthQuery {
     code: String,
     state: String,
 }
@@ -235,8 +241,7 @@ async fn logout_endpoint(
     Ok(response.finish())
 }
 
-#[get("/auth_callback")]
-async fn auth_endpoint(
+pub(crate) async fn auth_endpoint(
     req: HttpRequest,
     open_id_client: web::Data<Arc<OpenID>>,
     query: web::Query<AuthQuery>,
