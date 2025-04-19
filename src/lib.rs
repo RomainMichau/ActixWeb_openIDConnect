@@ -23,12 +23,14 @@ pub struct ActixWebOpenId {
     should_auth: fn(&ServiceRequest) -> bool,
     use_pkce: bool,
     redirect_path: String,
+    logout_path: String,
 }
 
 pub struct ActixWebOpenIdBuilder {
     client_id: String,
     client_secret: Option<String>,
     redirect_url: Url,
+    logout_path: String,
     issuer_url: String,
     should_auth: fn(&ServiceRequest) -> bool,
     post_logout_redirect_url: Option<String>,
@@ -50,6 +52,11 @@ impl ActixWebOpenIdBuilder {
 
     pub fn post_logout_redirect_url(mut self, url: impl Into<String>) -> Self {
         self.post_logout_redirect_url = Some(url.into());
+        self
+    }
+
+    pub fn logout_path(mut self, path: impl Into<String>) -> Self {
+        self.logout_path = path.into();
         self
     }
 
@@ -83,9 +90,10 @@ impl ActixWebOpenIdBuilder {
                 )
                 .await?,
             ),
+            redirect_path: self.redirect_url.path().to_string(),
             should_auth: self.should_auth,
             use_pkce: self.use_pkce,
-            redirect_path: self.redirect_url.path().to_string(),
+            logout_path: self.logout_path,
         })
     }
 }
@@ -100,6 +108,7 @@ impl ActixWebOpenId {
             client_id,
             client_secret: None,
             redirect_url: Url::parse(redirect_url.as_str()).expect("Invalid redirect URL"),
+            logout_path: "/logout".to_string(),
             issuer_url,
             should_auth: |_| true, // default behavior
             post_logout_redirect_url: None,
@@ -116,7 +125,10 @@ impl ActixWebOpenId {
                 web::resource(self.redirect_path.clone())
                     .route(web::get().to(openid_middleware::auth_endpoint)),
             )
-            .service(openid_middleware::logout_endpoint)
+            .service(
+                web::resource(self.logout_path.clone())
+                    .route(web::get().to(openid_middleware::logout_endpoint)),
+            )
             .app_data(web::Data::new(client.clone()));
         }
     }
