@@ -235,11 +235,10 @@ async fn logout_endpoint(
     Ok(response.finish())
 }
 
-#[get("/auth_callback")]
-async fn auth_endpoint(
-    req: HttpRequest,
-    open_id_client: web::Data<Arc<OpenID>>,
-    query: web::Query<AuthQuery>,
+async fn execute_auth_endpoint(
+    req: &HttpRequest,
+    open_id_client: &Arc<OpenID>,
+    query: &AuthQuery,
 ) -> actix_web::Result<HttpResponse> {
     let nonce = req
         .cookie(AuthCookies::Nonce.to_string().as_str())
@@ -334,6 +333,23 @@ async fn auth_endpoint(
     } else {
         response.finish()
     })
+}
+
+#[get("/auth_callback")]
+async fn auth_endpoint(
+    req: HttpRequest,
+    open_id_client: web::Data<Arc<OpenID>>,
+    query: web::Query<AuthQuery>,
+) -> actix_web::Result<HttpResponse> {
+    let res = execute_auth_endpoint(&req, &open_id_client, &query).await;
+    if res.is_err() && open_id_client.redirect_on_error {
+        let url = open_id_client.get_authorization_url("/".to_string(), open_id_client.use_pkce);
+        HttpResponse::Found()
+            .append_header((LOCATION, url.url.to_string()))
+            .await
+    } else {
+        res
+    }
 }
 
 pub struct Authenticated(AuthenticatedUser);
