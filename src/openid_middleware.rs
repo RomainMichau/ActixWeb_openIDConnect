@@ -340,8 +340,7 @@ async fn execute_auth_endpoint(
     })
 }
 
-#[get("/auth_callback")]
-async fn auth_endpoint(
+pub(crate) async fn auth_endpoint(
     req: HttpRequest,
     open_id_client: web::Data<Arc<OpenID>>,
     query: web::Query<AuthQuery>,
