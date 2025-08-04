@@ -1,10 +1,13 @@
 use actix_http::header::HeaderMap;
 use actix_web::dev::ServiceResponse;
-use actix_web::web::Bytes;
 use actix_web::Error;
 use actix_web_openidconnect::ActixWebOpenId;
+use env_logger::Builder;
 use httpmock::Method::GET;
 use httpmock::{Mock, MockServer};
+use log::LevelFilter;
+use std::collections::HashMap;
+use url::Url;
 
 mod mock_auth_api;
 
@@ -36,6 +39,7 @@ fn build_oidc_mock_server(server: &MockServer) -> OidcEndpointsMock {
             .header("content-type", "application/json; charset=UTF-8")
             .body(KEYS);
     });
+
     OidcEndpointsMock {
         metadata_endpoint_mock,
         keys_endpoint_mock,
@@ -46,7 +50,6 @@ fn build_oidc_mock_server(server: &MockServer) -> OidcEndpointsMock {
 struct TestResponse {
     status: u16,
     headers: HeaderMap,
-    body: Bytes,
 }
 
 async fn actix_response_to_test_response(resp: Result<ServiceResponse, Error>) -> TestResponse {
@@ -54,31 +57,23 @@ async fn actix_response_to_test_response(resp: Result<ServiceResponse, Error>) -
         Ok(http_resp) => {
             let status = http_resp.status().as_u16();
             let headers = http_resp.headers().clone();
-            let body = actix_web::test::read_body(http_resp).await;
-            TestResponse {
-                status,
-                headers,
-                body,
-            }
+            TestResponse { status, headers }
         }
         Err(err_resp) => {
             let http_resp = err_resp.error_response();
             let status = http_resp.status().as_u16();
             let headers = http_resp.headers().clone();
-            let body = actix_web::body::to_bytes(http_resp.into_body())
-                .await
-                .unwrap();
-            TestResponse {
-                status,
-                headers,
-                body,
-            }
+            TestResponse { status, headers }
         }
     }
 }
 
 #[actix_web::test]
 async fn test_add() {
+    Builder::new()
+        .filter_level(LevelFilter::Debug) // Set the log level (e.g., Info, Debug, etc.)
+        .init();
+
     let oidc_server = MockServer::start();
     let oidc_endpoints_mock = build_oidc_mock_server(&oidc_server);
 
@@ -86,15 +81,15 @@ async fn test_add() {
     println!("issuer_url: {}", issuer_url);
     let should_auth =
         |req: &actix_web::dev::ServiceRequest| !req.path().starts_with("/no_auth/hello");
-    // using common code.
+
     let open_id_actix_web = ActixWebOpenId::builder(
-        "bo".to_string(),
-        "http://redirect_url.com/auth".to_string(),
+        "test_client_id".to_string(),
+        "http://redirect_url.com/authpath".to_string(),
         issuer_url,
     )
-    .client_secret("bo".to_string())
+    .client_secret("test_client_secret".to_string())
     .should_auth(should_auth)
-    .scopes(vec!["bo".to_string()])
+    .scopes(vec!["openid".to_string()])
     .build_and_init()
     .await
     .unwrap();
@@ -102,14 +97,44 @@ async fn test_add() {
     oidc_endpoints_mock.keys_endpoint_mock.assert();
 
     let mock_app = mock_auth_api::get_mock_auth_api(&open_id_actix_web).await;
+
     let req = actix_web::test::TestRequest::get()
         .uri("/is_auth/hello")
         .to_request();
     let resp =
         actix_response_to_test_response(actix_web::test::try_call_service(&mock_app, req).await)
             .await;
+
+    // Test redirection to OIDC provider
     assert_eq!(resp.status, 302);
-    resp.headers.get("location").unwrap();
-    let body = actix_web::body::to_bytes(resp.body).await.unwrap();
-    println!("body: {:?}", body);
+    let header = resp.headers.get("location").unwrap();
+    let actual = header.to_str().unwrap();
+    let expected = "http://127.0.0.1:32931/realms/my_realm/protocol/openid-connect/auth?client_id=test_client_id&redirect_uri=http%3A%2F%2Fredirect_url.com%2Fauthpath&scope=openid+openid&response_type=code&state=%2Fis_auth%2Fhello";
+    println!("{}", expected);
+    let (scheme_a, host_a, path_a, query_a) = parse_url_ignoring_nonce(actual);
+    let (scheme_e, host_e, path_e, query_e) = parse_url_ignoring_nonce(expected);
+
+    assert_eq!(scheme_a, scheme_e, "Scheme mismatch");
+    assert_eq!(host_a, host_e, "Host mismatch");
+    assert_eq!(path_a, path_e, "Path mismatch");
+    assert_eq!(
+        query_a, query_e,
+        "Query parameters mismatch (excluding nonce)"
+    );
+}
+
+fn parse_url_ignoring_nonce(url_str: &str) -> (String, String, String, HashMap<String, String>) {
+    let url = Url::parse(url_str).expect("Invalid URL");
+
+    let scheme = url.scheme().to_string();
+    let host = url.host_str().expect("No host in URL").to_string();
+    let path = url.path().to_string();
+
+    let query_map = url
+        .query_pairs()
+        .into_owned()
+        .filter(|(k, _)| k != "nonce")
+        .collect::<HashMap<_, _>>();
+
+    (scheme, host, path, query_map)
 }

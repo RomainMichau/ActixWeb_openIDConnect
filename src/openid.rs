@@ -104,7 +104,7 @@ impl OpenID {
     pub(crate) async fn init(
         client_id: String,
         client_secret: Option<String>,
-        redirect_uri: String,
+        redirect_uri: Url,
         issuer_url: String,
         post_logout_redirect_url: Option<String>,
         scopes: Vec<String>,
