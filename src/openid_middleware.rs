@@ -285,7 +285,7 @@ async fn execute_auth_endpoint(
                 .verify_id_token(id_token, nonce)
                 .await
                 .map_err(|err| {
-                    log::warn!("Error verifying id token: {}", err);
+                    log::warn!("Error verifying id token: {err}");
                     error::ErrorInternalServerError("invalid id token")
                 })?,
         )
