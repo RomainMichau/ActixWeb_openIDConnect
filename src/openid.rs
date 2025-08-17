@@ -29,6 +29,8 @@ pub struct OpenID {
     post_logout_redirect_url: Option<String>,
     scopes: Vec<Scope>,
     additional_audiences: Vec<String>,
+    pub(crate) redirect_on_error: bool,
+    allow_all_audiences: bool,
     pub(crate) use_pkce: bool,
 }
 
@@ -107,7 +109,9 @@ impl OpenID {
         post_logout_redirect_url: Option<String>,
         scopes: Vec<String>,
         additional_audiences: Vec<String>,
+        allow_all_audiences: bool,
         use_pkce: bool,
+        redirect_on_error: bool,
     ) -> Result<Self> {
         let provider_metadata = ExtendedProviderMetadata::discover_async(
             IssuerUrl::new(issuer_url)?,
@@ -132,6 +136,8 @@ impl OpenID {
             scopes: scopes.iter().map(|s| Scope::new(s.to_string())).collect(),
             additional_audiences,
             use_pkce,
+            redirect_on_error,
+            allow_all_audiences,
         })
     }
 
@@ -207,7 +213,9 @@ impl OpenID {
             &self
                 .client
                 .id_token_verifier()
-                .set_other_audience_verifier_fn(|aud| self.additional_audiences.contains(aud)),
+                .set_other_audience_verifier_fn(|aud| {
+                    self.allow_all_audiences || self.additional_audiences.contains(aud)
+                }),
             &Nonce::new(nonce),
         )
     }

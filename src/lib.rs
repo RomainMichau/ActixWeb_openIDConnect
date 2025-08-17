@@ -37,6 +37,8 @@ pub struct ActixWebOpenIdBuilder {
     scopes: Vec<String>,
     additional_audiences: Vec<String>,
     use_pkce: bool,
+    redirect_on_error: bool,
+    allow_all_audiences: bool,
 }
 
 impl ActixWebOpenIdBuilder {
@@ -75,6 +77,16 @@ impl ActixWebOpenIdBuilder {
         self
     }
 
+    pub fn redirect_on_error(mut self, redirect_on_error: bool) -> Self {
+        self.redirect_on_error = redirect_on_error;
+        self
+    }
+
+    pub fn allow_all_audiences(mut self, allow_all_audiences: bool) -> Self {
+        self.allow_all_audiences = allow_all_audiences;
+        self
+    }
+
     pub async fn build_and_init(self) -> anyhow::Result<ActixWebOpenId> {
         Ok(ActixWebOpenId {
             openid_client: Arc::new(
@@ -87,6 +99,8 @@ impl ActixWebOpenIdBuilder {
                     self.scopes,
                     self.additional_audiences,
                     self.use_pkce,
+                    self.redirect_on_error,
+                    self.allow_all_audiences,
                 )
                 .await?,
             ),
@@ -115,6 +129,8 @@ impl ActixWebOpenId {
             scopes: vec!["openid".into()],
             additional_audiences: vec![],
             use_pkce: false,
+            redirect_on_error: false,
+            allow_all_audiences: false,
         }
     }
 
