@@ -26,6 +26,6 @@ url = "2"
 env_logger = "0.11"
 
 [dev-dependencies]
-httpmock = "0.7.0"
-actix-http = "3.10.0"
+httpmock = "0.8.0"
+actix-http = "3.11.1"
 actix-service = "2.0.3"
