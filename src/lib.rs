@@ -98,9 +98,9 @@ impl ActixWebOpenIdBuilder {
                     self.post_logout_redirect_url,
                     self.scopes,
                     self.additional_audiences,
+                    self.allow_all_audiences,
                     self.use_pkce,
                     self.redirect_on_error,
-                    self.allow_all_audiences,
                 )
                 .await?,
             ),
