@@ -10,7 +10,7 @@ Rely on the excellent [openidconnect-rs](https://github.com/ramosbugs/openidconn
 
 ```toml
 [dependencies]
-actix_web_openidconnect = "~0.3.2"
+actix_web_openidconnect = "~0.3.3"
 ```
 
 ### main.rs
