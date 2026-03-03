@@ -6,25 +6,29 @@ use oauth2::{
 };
 use openidconnect::core::{
     CoreAuthDisplay, CoreAuthPrompt, CoreAuthenticationFlow, CoreClaimName, CoreClaimType,
-    CoreClient, CoreClientAuthMethod, CoreGenderClaim, CoreGrantType, CoreIdTokenClaims,
-    CoreJsonWebKey, CoreJweContentEncryptionAlgorithm, CoreJweKeyManagementAlgorithm,
-    CoreJwsSigningAlgorithm, CoreResponseMode, CoreResponseType, CoreSubjectIdentifierType,
-    CoreTokenIntrospectionResponse, CoreTokenResponse,
+    CoreClientAuthMethod, CoreGenderClaim, CoreGrantType, CoreJsonWebKey,
+    CoreJweContentEncryptionAlgorithm, CoreJweKeyManagementAlgorithm, CoreJwsSigningAlgorithm,
+    CoreResponseMode, CoreResponseType, CoreSubjectIdentifierType, CoreTokenIntrospectionResponse,
 };
 use openidconnect::{reqwest, Client, IdToken};
 use openidconnect::{
-    AccessToken, AdditionalProviderMetadata, AuthorizationCode, ClaimsVerificationError, ClientId,
-    ClientSecret, CsrfToken, EmptyAdditionalClaims, EndSessionUrl, IssuerUrl, LogoutRequest, Nonce,
-    OAuth2TokenResponse, PostLogoutRedirectUrl, ProviderMetadata, RedirectUrl, RefreshToken, Scope,
-    TokenResponse, UserInfoClaims,
+    AccessToken, AdditionalClaims, AdditionalProviderMetadata, AuthorizationCode,
+    ClaimsVerificationError, ClientId, ClientSecret, CsrfToken, EndSessionUrl, IssuerUrl,
+    LogoutRequest, Nonce, OAuth2TokenResponse, PostLogoutRedirectUrl, ProviderMetadata,
+    RedirectUrl, RefreshToken, Scope, TokenResponse, UserInfoClaims,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use url::Url;
 
+use crate::{ClaimClient, ClaimIdTokenClaims, ClaimTokenResponse};
+
 #[derive(Clone)]
-pub struct OpenID {
-    client: ExtendedClient,
+pub struct OpenID<C>
+where
+    C: AdditionalClaims + Clone + Sync,
+{
+    client: ExtendedClient<C>,
     provider_metadata: ExtendedProviderMetadata,
     post_logout_redirect_url: Option<String>,
     scopes: Vec<Scope>,
@@ -34,9 +38,12 @@ pub struct OpenID {
     pub(crate) use_pkce: bool,
 }
 
-pub struct OpenIDTokens {
+pub struct OpenIDTokens<C>
+where
+    C: AdditionalClaims + Clone + Sync,
+{
     pub access_token: AccessToken,
-    pub id_token: Option<ExtendedIdToken>,
+    pub id_token: Option<ExtendedIdToken<C>>,
     pub refresh_token: Option<RefreshToken>,
 }
 
@@ -68,15 +75,15 @@ pub(crate) type ExtendedProviderMetadata = ProviderMetadata<
     CoreSubjectIdentifierType,
 >;
 
-pub(crate) type ExtendedClient = Client<
-    EmptyAdditionalClaims,
+pub(crate) type ExtendedClient<C> = Client<
+    C,
     CoreAuthDisplay,
     CoreGenderClaim,
     CoreJweContentEncryptionAlgorithm,
     CoreJsonWebKey,
     CoreAuthPrompt,
     StandardErrorResponse<BasicErrorResponseType>,
-    CoreTokenResponse,
+    ClaimTokenResponse<C>,
     CoreTokenIntrospectionResponse,
     StandardRevocableToken,
     BasicRevocationErrorResponse,
@@ -88,18 +95,17 @@ pub(crate) type ExtendedClient = Client<
     EndpointMaybeSet,
 >;
 
-pub(crate) type ExtendedIdToken = IdToken<
-    EmptyAdditionalClaims,
-    CoreGenderClaim,
-    CoreJweContentEncryptionAlgorithm,
-    CoreJwsSigningAlgorithm,
->;
+pub(crate) type ExtendedIdToken<C> =
+    IdToken<C, CoreGenderClaim, CoreJweContentEncryptionAlgorithm, CoreJwsSigningAlgorithm>;
 
 fn get_http_client() -> reqwest::Client {
     reqwest::Client::builder().build().unwrap()
 }
 
-impl OpenID {
+impl<C> OpenID<C>
+where
+    C: AdditionalClaims + Clone + Sync,
+{
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn init(
         client_id: String,
@@ -120,7 +126,7 @@ impl OpenID {
         .await
         .expect("Failed to discover OpenID Provider");
 
-        let client = CoreClient::from_provider_metadata(
+        let client = ClaimClient::from_provider_metadata(
             provider_metadata.clone(),
             ClientId::new(client_id.to_string()),
             client_secret.map(|client_secret| ClientSecret::new(client_secret.to_string())),
@@ -173,7 +179,7 @@ impl OpenID {
         &self,
         authorization_code: AuthorizationCode,
         pkce_verifier: Option<String>,
-    ) -> Result<OpenIDTokens> {
+    ) -> Result<OpenIDTokens<C>> {
         let token_response = if let Some(pkce_verifier) = pkce_verifier {
             self.client
                 .exchange_code(authorization_code)?
@@ -196,7 +202,7 @@ impl OpenID {
     pub(crate) async fn user_info(
         &self,
         access_token: AccessToken,
-    ) -> Result<UserInfoClaims<EmptyAdditionalClaims, CoreGenderClaim>> {
+    ) -> Result<UserInfoClaims<C, CoreGenderClaim>> {
         Ok(self
             .client
             .user_info(access_token, None)?
@@ -206,9 +212,9 @@ impl OpenID {
 
     pub(crate) async fn verify_id_token<'a>(
         &self,
-        id_token: &'a ExtendedIdToken,
+        id_token: &'a ExtendedIdToken<C>,
         nonce: String,
-    ) -> Result<&'a CoreIdTokenClaims, ClaimsVerificationError> {
+    ) -> Result<&'a ClaimIdTokenClaims<C>, ClaimsVerificationError> {
         id_token.claims(
             &self
                 .client
@@ -220,7 +226,7 @@ impl OpenID {
         )
     }
 
-    pub(crate) fn get_logout_uri(&self, id_token: &ExtendedIdToken) -> Url {
+    pub(crate) fn get_logout_uri(&self, id_token: &ExtendedIdToken<C>) -> Url {
         let mut logout_request = LogoutRequest::from(
             self.provider_metadata
                 .additional_metadata()
