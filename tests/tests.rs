@@ -82,7 +82,7 @@ async fn test_add() {
     let should_auth =
         |req: &actix_web::dev::ServiceRequest| !req.path().starts_with("/no_auth/hello");
 
-    let open_id_actix_web = ActixWebOpenId::builder(
+    let open_id_actix_web = ActixWebOpenId::<openidconnect::EmptyAdditionalClaims>::builder(
         "test_client_id".to_string(),
         "http://redirect_url.com/authpath".to_string(),
         issuer_url,

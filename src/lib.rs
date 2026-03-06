@@ -12,14 +12,66 @@ use crate::openid::OpenID;
 use actix_web::dev::ServiceRequest;
 use actix_web::web;
 use actix_web::web::ServiceConfig;
+use oauth2::{EmptyExtraTokenFields, EndpointNotSet, StandardErrorResponse, StandardTokenResponse};
+use openidconnect::{
+    core::{
+        CoreAuthDisplay, CoreAuthPrompt, CoreErrorResponseType, CoreGenderClaim, CoreJsonWebKey,
+        CoreJweContentEncryptionAlgorithm, CoreJwsSigningAlgorithm, CoreRevocableToken,
+        CoreRevocationErrorResponse, CoreTokenIntrospectionResponse, CoreTokenType,
+    },
+    Client, IdTokenClaims, IdTokenFields,
+};
 use url::Url;
 
 mod openid;
 pub mod openid_middleware;
+pub use openidconnect::AdditionalClaims; // Necessary to access AdditionalClaims from outside of this create
+
+pub type ClaimClient<
+    C,
+    HasAuthUrl = EndpointNotSet,
+    HasDeviceAuthUrl = EndpointNotSet,
+    HasIntrospectionUrl = EndpointNotSet,
+    HasRevocationUrl = EndpointNotSet,
+    HasTokenUrl = EndpointNotSet,
+    HasUserInfoUrl = EndpointNotSet,
+> = Client<
+    C,
+    CoreAuthDisplay,
+    CoreGenderClaim,
+    CoreJweContentEncryptionAlgorithm,
+    CoreJsonWebKey,
+    CoreAuthPrompt,
+    StandardErrorResponse<CoreErrorResponseType>,
+    ClaimTokenResponse<C>,
+    CoreTokenIntrospectionResponse,
+    CoreRevocableToken,
+    CoreRevocationErrorResponse,
+    HasAuthUrl,
+    HasDeviceAuthUrl,
+    HasIntrospectionUrl,
+    HasRevocationUrl,
+    HasTokenUrl,
+    HasUserInfoUrl,
+>;
+
+pub type ClaimIdTokenClaims<C> = IdTokenClaims<C, CoreGenderClaim>;
+
+pub type ClaimIdTokenFields<C> = IdTokenFields<
+    C,
+    EmptyExtraTokenFields,
+    CoreGenderClaim,
+    CoreJweContentEncryptionAlgorithm,
+    CoreJwsSigningAlgorithm,
+>;
+pub type ClaimTokenResponse<C> = StandardTokenResponse<ClaimIdTokenFields<C>, CoreTokenType>;
 
 #[derive(Clone)]
-pub struct ActixWebOpenId {
-    openid_client: Arc<OpenID>,
+pub struct ActixWebOpenId<C = openidconnect::EmptyAdditionalClaims>
+where
+    C: AdditionalClaims + Clone + Sync,
+{
+    openid_client: Arc<OpenID<C>>,
     should_auth: fn(&ServiceRequest) -> bool,
     use_pkce: bool,
     redirect_path: String,
@@ -87,8 +139,11 @@ impl ActixWebOpenIdBuilder {
         self
     }
 
-    pub async fn build_and_init(self) -> anyhow::Result<ActixWebOpenId> {
-        Ok(ActixWebOpenId {
+    pub async fn build_and_init<C>(self) -> anyhow::Result<ActixWebOpenId<C>>
+    where
+        C: AdditionalClaims + Clone + Sync,
+    {
+        Ok(ActixWebOpenId::<C> {
             openid_client: Arc::new(
                 OpenID::init(
                     self.client_id,
@@ -112,7 +167,10 @@ impl ActixWebOpenIdBuilder {
     }
 }
 
-impl ActixWebOpenId {
+impl<C> ActixWebOpenId<C>
+where
+    C: AdditionalClaims + Clone + Sync,
+{
     pub fn builder(
         client_id: String,
         redirect_url: String,
@@ -134,22 +192,22 @@ impl ActixWebOpenId {
         }
     }
 
-    pub fn configure_open_id(&self) -> impl Fn(&mut ServiceConfig) + use<'_> {
+    pub fn configure_open_id(&self) -> impl Fn(&mut ServiceConfig) + use<'_, C> {
         let client = self.openid_client.clone();
         move |cfg: &mut ServiceConfig| {
             cfg.service(
                 web::resource(self.redirect_path.clone())
-                    .route(web::get().to(openid_middleware::auth_endpoint)),
+                    .route(web::get().to(openid_middleware::auth_endpoint::<C>)),
             )
             .service(
                 web::resource(self.logout_path.clone())
-                    .route(web::get().to(openid_middleware::logout_endpoint)),
+                    .route(web::get().to(openid_middleware::logout_endpoint::<C>)),
             )
             .app_data(web::Data::new(client.clone()));
         }
     }
 
-    pub fn get_middleware(&self) -> openid_middleware::AuthenticateMiddlewareFactory {
+    pub fn get_middleware(&self) -> openid_middleware::AuthenticateMiddlewareFactory<C> {
         openid_middleware::AuthenticateMiddlewareFactory::new(
             self.openid_client.clone(),
             self.should_auth,
