@@ -62,6 +62,27 @@ async fn main() -> std::io::Result<()> {
 }
 ```  
 
+<details>
+
+<summary>Use additional claims</summary>
+
+```rust
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct GroupClaims {
+    groups: Vec<String>,
+}
+impl actix_web_openidconnect::AdditionalClaims for GroupClaims {}
+
+async fn auth(auth_data: Authenticated<GroupClaims>) -> impl Responder {
+    HttpResponse::Ok().body(format!("hello auth_user {:?}. email: {:?}. groups: {:?}", auth_data.access.preferred_username().unwrap(),
+                                    auth_data.access.email(), auth_data.access.additional_claims().groups))
+}
+
+let openid: ActixWebOpenId<GroupClaims> = ActixWebOpenId::<GroupClaims>::builder(...)
+```
+
+</details>
+
 # Parameters
 
 | name                     | description                                                                                                                                                                                               | Example                                                                                                                        | doc                                                                                                                  |
