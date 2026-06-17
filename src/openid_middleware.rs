@@ -22,6 +22,7 @@ use openidconnect::{
 use serde::Deserialize;
 
 use crate::openid::{ExtendedIdToken, OpenID};
+use crate::ClaimIdTokenClaims;
 
 enum AuthCookies {
     AccessToken,
@@ -117,23 +118,30 @@ impl error::ResponseError for AuthError {
     }
 }
 
-pub struct OpenIdMiddleware<C, S>
+pub struct OpenIdMiddleware<C, S, F>
 where
     C: AdditionalClaims + Clone + Sync,
+    F: Fn(&ClaimIdTokenClaims<C>) + Clone + Sync,
 {
-    openid_client: Arc<OpenID<C>>,
+    openid_client: Arc<OpenID<C, F>>,
     service: Rc<S>,
     should_auth: fn(&ServiceRequest) -> bool,
     use_pkce: bool,
     redirect_path: String,
 }
 
-impl<C, S> OpenIdMiddleware<C, S> where C: AdditionalClaims + Clone + Sync {}
+impl<C, S, F> OpenIdMiddleware<C, S, F>
+where
+    C: AdditionalClaims + Clone + Sync,
+    F: Fn(&ClaimIdTokenClaims<C>) + Clone + Sync,
+{
+}
 
-impl<C, S, B> Service<ServiceRequest> for OpenIdMiddleware<C, S>
+impl<C, S, B, F> Service<ServiceRequest> for OpenIdMiddleware<C, S, F>
 where
     C: AdditionalClaims + Clone + Sync,
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
+    F: Fn(&ClaimIdTokenClaims<C>) + Clone + Sync + 'static,
 {
     type Response = ServiceResponse<B>;
     type Error = Error;
@@ -186,22 +194,24 @@ where
     }
 }
 
-pub struct AuthenticateMiddlewareFactory<C>
+pub struct AuthenticateMiddlewareFactory<C, F>
 where
     C: AdditionalClaims + Clone + Sync,
+    F: Fn(&ClaimIdTokenClaims<C>),
 {
-    client: Arc<OpenID<C>>,
+    client: Arc<OpenID<C, F>>,
     should_auth: fn(&ServiceRequest) -> bool,
     use_pkce: bool,
     redirect_path: String,
 }
 
-impl<C> AuthenticateMiddlewareFactory<C>
+impl<C, F> AuthenticateMiddlewareFactory<C, F>
 where
     C: AdditionalClaims + Clone + Sync,
+    F: Fn(&ClaimIdTokenClaims<C>),
 {
     pub(crate) fn new(
-        client: Arc<OpenID<C>>,
+        client: Arc<OpenID<C, F>>,
         should_auth: fn(&ServiceRequest) -> bool,
         use_pkce: bool,
         redirect_path: String,
@@ -215,14 +225,15 @@ where
     }
 }
 
-impl<C, S, B> Transform<S, ServiceRequest> for AuthenticateMiddlewareFactory<C>
+impl<C, S, B, F> Transform<S, ServiceRequest> for AuthenticateMiddlewareFactory<C, F>
 where
     C: AdditionalClaims + Clone + Sync,
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
+    F: Fn(&ClaimIdTokenClaims<C>) + Clone + Sync + 'static,
 {
     type Response = ServiceResponse<B>;
     type Error = Error;
-    type Transform = OpenIdMiddleware<C, S>;
+    type Transform = OpenIdMiddleware<C, S, F>;
     type InitError = ();
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
@@ -243,12 +254,13 @@ pub(crate) struct AuthQuery {
     state: String,
 }
 
-pub(crate) async fn logout_endpoint<C>(
+pub(crate) async fn logout_endpoint<C, F>(
     req: HttpRequest,
-    open_id_client: web::Data<Arc<OpenID<C>>>,
+    open_id_client: web::Data<Arc<OpenID<C, F>>>,
 ) -> actix_web::Result<HttpResponse>
 where
     C: AdditionalClaims + Clone + Sync,
+    F: Fn(&ClaimIdTokenClaims<C>) + Sync,
 {
     let id_token = match req.cookie(AuthCookies::IdToken.to_string().as_str()) {
         None => {
@@ -263,13 +275,14 @@ where
     Ok(response.finish())
 }
 
-async fn execute_auth_endpoint<C>(
+async fn execute_auth_endpoint<C, F>(
     req: &HttpRequest,
-    open_id_client: &Arc<OpenID<C>>,
+    open_id_client: &Arc<OpenID<C, F>>,
     query: &AuthQuery,
 ) -> actix_web::Result<HttpResponse>
 where
     C: AdditionalClaims + Clone + Sync,
+    F: Fn(&ClaimIdTokenClaims<C>) + Sync,
 {
     let nonce = req
         .cookie(AuthCookies::Nonce.to_string().as_str())
@@ -342,6 +355,7 @@ where
     }
 
     if let Some(claims) = claims {
+        (open_id_client.on_login)(claims);
         response.cookie(
             Cookie::build::<String, String>(
                 AuthCookies::UserInfo.to_string(),
@@ -366,13 +380,14 @@ where
     })
 }
 
-pub(crate) async fn auth_endpoint<C>(
+pub(crate) async fn auth_endpoint<C, F>(
     req: HttpRequest,
-    open_id_client: web::Data<Arc<OpenID<C>>>,
+    open_id_client: web::Data<Arc<OpenID<C, F>>>,
     query: web::Query<AuthQuery>,
 ) -> actix_web::Result<HttpResponse>
 where
     C: AdditionalClaims + Clone + Sync,
+    F: Fn(&ClaimIdTokenClaims<C>) + Sync,
 {
     let res = execute_auth_endpoint(&req, &open_id_client, &query).await;
     if res.is_err() && open_id_client.redirect_on_error {

@@ -83,6 +83,19 @@ let openid: ActixWebOpenId<GroupClaims> = ActixWebOpenId::<GroupClaims>::builder
 
 </details>
 
+<details>
+
+<summary>Call a function with the received claims on login</summary>
+
+```rust
+let openid: ActixWebOpenId<GroupClaims> = ActixWebOpenId::<GroupClaims>::builder(...)
+    .on_login(|claims| {
+        println!("{} logged in!", claims.preferred_username().unwrap().as_str())
+    })
+```
+
+</details>
+
 # Parameters
 
 | name                     | description                                                                                                                                                                                               | Example                                                                                                                        | doc                                                                                                                  |
