@@ -24,9 +24,10 @@ use url::Url;
 use crate::{ClaimClient, ClaimIdTokenClaims, ClaimTokenResponse};
 
 #[derive(Clone)]
-pub struct OpenID<C>
+pub struct OpenID<C, F>
 where
     C: AdditionalClaims + Clone + Sync,
+    F: Fn(&ClaimIdTokenClaims<C>),
 {
     client: ExtendedClient<C>,
     provider_metadata: ExtendedProviderMetadata,
@@ -36,6 +37,7 @@ where
     pub(crate) redirect_on_error: bool,
     allow_all_audiences: bool,
     pub(crate) use_pkce: bool,
+    pub(crate) on_login: F,
 }
 
 pub struct OpenIDTokens<C>
@@ -102,9 +104,10 @@ fn get_http_client() -> reqwest::Client {
     reqwest::Client::builder().build().unwrap()
 }
 
-impl<C> OpenID<C>
+impl<C, F> OpenID<C, F>
 where
     C: AdditionalClaims + Clone + Sync,
+    F: Fn(&ClaimIdTokenClaims<C>) + Sync,
 {
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn init(
@@ -118,6 +121,7 @@ where
         allow_all_audiences: bool,
         use_pkce: bool,
         redirect_on_error: bool,
+        on_login: F,
     ) -> Result<Self> {
         let provider_metadata = ExtendedProviderMetadata::discover_async(
             IssuerUrl::new(issuer_url)?,
@@ -144,6 +148,7 @@ where
             use_pkce,
             redirect_on_error,
             allow_all_audiences,
+            on_login,
         })
     }
 

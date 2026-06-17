@@ -6,7 +6,7 @@
 //! Documentation: https://github.com/RomainMichau/ActixWeb_openIDConnect
 //!
 
-use std::sync::Arc;
+use std::{marker::PhantomData, sync::Arc};
 
 use crate::openid::OpenID;
 use actix_web::dev::ServiceRequest;
@@ -67,18 +67,23 @@ pub type ClaimIdTokenFields<C> = IdTokenFields<
 pub type ClaimTokenResponse<C> = StandardTokenResponse<ClaimIdTokenFields<C>, CoreTokenType>;
 
 #[derive(Clone)]
-pub struct ActixWebOpenId<C = openidconnect::EmptyAdditionalClaims>
+pub struct ActixWebOpenId<C = openidconnect::EmptyAdditionalClaims, F = fn(&ClaimIdTokenClaims<C>)>
 where
     C: AdditionalClaims + Clone + Sync,
+    F: Fn(&ClaimIdTokenClaims<C>) + Sync,
 {
-    openid_client: Arc<OpenID<C>>,
+    openid_client: Arc<OpenID<C, F>>,
     should_auth: fn(&ServiceRequest) -> bool,
     use_pkce: bool,
     redirect_path: String,
     logout_path: String,
 }
 
-pub struct ActixWebOpenIdBuilder {
+pub struct ActixWebOpenIdBuilder<C, F>
+where
+    C: AdditionalClaims + Clone + Sync,
+    F: Fn(&ClaimIdTokenClaims<C>),
+{
     client_id: String,
     client_secret: Option<String>,
     redirect_url: Url,
@@ -91,9 +96,15 @@ pub struct ActixWebOpenIdBuilder {
     use_pkce: bool,
     redirect_on_error: bool,
     allow_all_audiences: bool,
+    on_login: F,
+    phantom: PhantomData<C>,
 }
 
-impl ActixWebOpenIdBuilder {
+impl<C, F> ActixWebOpenIdBuilder<C, F>
+where
+    C: AdditionalClaims + Clone + Sync,
+    F: Fn(&ClaimIdTokenClaims<C>) + Sync,
+{
     pub fn client_secret(mut self, secret: impl Into<String>) -> Self {
         self.client_secret = Some(secret.into());
         self
@@ -102,6 +113,28 @@ impl ActixWebOpenIdBuilder {
     pub fn should_auth(mut self, f: fn(&ServiceRequest) -> bool) -> Self {
         self.should_auth = f;
         self
+    }
+
+    pub fn on_login<G>(self, f: G) -> ActixWebOpenIdBuilder<C, G>
+    where
+        G: Fn(&ClaimIdTokenClaims<C>) + Sync + 'static,
+    {
+        ActixWebOpenIdBuilder {
+            on_login: f,
+            client_id: self.client_id,
+            client_secret: self.client_secret,
+            redirect_url: self.redirect_url,
+            logout_path: self.logout_path,
+            issuer_url: self.issuer_url,
+            should_auth: self.should_auth,
+            post_logout_redirect_url: self.post_logout_redirect_url,
+            scopes: self.scopes,
+            additional_audiences: self.additional_audiences,
+            use_pkce: self.use_pkce,
+            redirect_on_error: self.redirect_on_error,
+            allow_all_audiences: self.allow_all_audiences,
+            phantom: PhantomData,
+        }
     }
 
     pub fn post_logout_redirect_url(mut self, url: impl Into<String>) -> Self {
@@ -139,11 +172,8 @@ impl ActixWebOpenIdBuilder {
         self
     }
 
-    pub async fn build_and_init<C>(self) -> anyhow::Result<ActixWebOpenId<C>>
-    where
-        C: AdditionalClaims + Clone + Sync,
-    {
-        Ok(ActixWebOpenId::<C> {
+    pub async fn build_and_init(self) -> anyhow::Result<ActixWebOpenId<C, F>> {
+        Ok(ActixWebOpenId::<C, F> {
             openid_client: Arc::new(
                 OpenID::init(
                     self.client_id,
@@ -156,6 +186,7 @@ impl ActixWebOpenIdBuilder {
                     self.allow_all_audiences,
                     self.use_pkce,
                     self.redirect_on_error,
+                    self.on_login,
                 )
                 .await?,
             ),
@@ -167,7 +198,7 @@ impl ActixWebOpenIdBuilder {
     }
 }
 
-impl<C> ActixWebOpenId<C>
+impl<C> ActixWebOpenId<C, fn(&ClaimIdTokenClaims<C>)>
 where
     C: AdditionalClaims + Clone + Sync,
 {
@@ -175,7 +206,7 @@ where
         client_id: String,
         redirect_url: String,
         issuer_url: String,
-    ) -> ActixWebOpenIdBuilder {
+    ) -> ActixWebOpenIdBuilder<C, fn(&ClaimIdTokenClaims<C>)> {
         ActixWebOpenIdBuilder {
             client_id,
             client_secret: None,
@@ -189,25 +220,33 @@ where
             use_pkce: false,
             redirect_on_error: false,
             allow_all_audiences: false,
+            on_login: |_| {},
+            phantom: PhantomData,
         }
     }
+}
 
-    pub fn configure_open_id(&self) -> impl Fn(&mut ServiceConfig) + use<'_, C> {
+impl<C, F> ActixWebOpenId<C, F>
+where
+    C: AdditionalClaims + Clone + Sync,
+    F: Fn(&ClaimIdTokenClaims<C>) + Sync + 'static,
+{
+    pub fn configure_open_id(&self) -> impl Fn(&mut ServiceConfig) + use<'_, C, F> {
         let client = self.openid_client.clone();
         move |cfg: &mut ServiceConfig| {
             cfg.service(
                 web::resource(self.redirect_path.clone())
-                    .route(web::get().to(openid_middleware::auth_endpoint::<C>)),
+                    .route(web::get().to(openid_middleware::auth_endpoint::<C, F>)),
             )
             .service(
                 web::resource(self.logout_path.clone())
-                    .route(web::get().to(openid_middleware::logout_endpoint::<C>)),
+                    .route(web::get().to(openid_middleware::logout_endpoint::<C, F>)),
             )
             .app_data(web::Data::new(client.clone()));
         }
     }
 
-    pub fn get_middleware(&self) -> openid_middleware::AuthenticateMiddlewareFactory<C> {
+    pub fn get_middleware(&self) -> openid_middleware::AuthenticateMiddlewareFactory<C, F> {
         openid_middleware::AuthenticateMiddlewareFactory::new(
             self.openid_client.clone(),
             self.should_auth,
