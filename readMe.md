@@ -10,7 +10,7 @@ Rely on the excellent [openidconnect-rs](https://github.com/ramosbugs/openidconn
 
 ```toml
 [dependencies]
-actix_web_openidconnect = "~0.3.3"
+actix_web_openidconnect = "~0.4.0"
 ```
 
 ### main.rs
@@ -109,6 +109,7 @@ let openid: ActixWebOpenId<GroupClaims> = ActixWebOpenId::<GroupClaims>::builder
 | scopes                   | List of scope to be used during the authentication. "openid" scope is required for openid flow                                                                                                            | [openid, profile, email]                                                                                                       | [keycloak](https://www.keycloak.org/docs/latest/server_admin/#_client_scopes)                                        |
 | use_pkce                 | Enforce the usage of PKCE (Proof Key for Code Exchange Code Challenge Method). Need to be supported by the OIDC provider                                                                                  | `true`                                                                                                                         | [keycloak](https://www.keycloak.org/docs/latest/server_admin/#proc-creating-oidc-client_server_administration_guide) |
 | additional_audiences     | Additional audiences claims trusted by client                                                                                                                                                             | [myOtherClient1, myOtherClient2]                                                                                               | [keycloak](https://www.keycloak.org/docs/latest/authorization_services/index.html)                                   |
+| on_login                 | Optional closure called with the received ID token claims every time a user logs in. Useful to run side effects (logging, provisioning, ...) at login time                                                 | ``` \|claims\| { println!("{} logged in!", claims.preferred_username().unwrap().as_str()) } ```                               |                                                                                                                      |
 
 # Features
 
